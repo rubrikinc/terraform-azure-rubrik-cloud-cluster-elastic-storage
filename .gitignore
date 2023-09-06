@@ -1,0 +1,8 @@
+.terraform*
+.vscode
+*.tfstate*
+*.tfvars
+*.tfvars.*
+*.*~
+*.out
+*.py
