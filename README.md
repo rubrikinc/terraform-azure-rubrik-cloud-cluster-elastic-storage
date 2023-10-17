@@ -250,7 +250,7 @@ resource "azapi_update_resource" "cces_subnet_storage_endpoint" {
 
 ### Bootstrapping the Cloud Cluster
 
-The `resource "rubrik_bootstrap_cces_azure" "bootstrap_rubrik_cces_aws"` resource block will attempt to bootstrap the Cloud Cluster. To use this block properly, the system that runs this Terraform module
+The `resource "rubrik_bootstrap_cces_azure" "bootstrap_rubrik_cces_azure"` resource block will attempt to bootstrap the Cloud Cluster. To use this block properly, the system that runs this Terraform module
 must have the [Rubrik Provider for Terraform](https://github.com/rubrikinc/terraform-provider-rubrik) installed. The system running this Terraform module must also be able to contact the Cloud Cluster on
 its private IP address. If the resource for bootstrapping the Rubrik Cloud Cluster is not used, bootstrap the Rubrik Cloud Cluster as documented in the Rubrik Cloud Cluster guide, after this module has run.
 After bootstrapping, the Cloud Cluster can be configured through the Web UI.
