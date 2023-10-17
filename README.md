@@ -36,7 +36,6 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
   azure_vnet_name       = "private-vnet"
   azure_vnet_rg_name    = "Company_VNets"
   azure_sa_name         = "rubrikcces"
-k/
 
   cluster_name          = "rubrik-cloud-cluster"
   admin_email           = "build@rubrik.com"
