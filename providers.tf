@@ -7,8 +7,9 @@ terraform {
     azapi = {
       source = "Azure/azapi"
     }
-    rubrik = {
-      source   = "rubrikinc/rubrik/rubrik"
+    polaris = {
+      source  = "rubrikinc/polaris"
+      version = "=0.8.0-beta.4"
     }
   }
 }
@@ -25,8 +26,4 @@ provider "azurerm" {
 
 provider "azapi" {}
 
-provider "rubrik" {
-  node_ip  = local.cluster_node_ips.0
-  username = ""
-  password = ""
-}
+provider "polaris" {}
