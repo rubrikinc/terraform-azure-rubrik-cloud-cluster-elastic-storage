@@ -64,14 +64,14 @@ resource "azapi_resource" "cc_container" {
   # We append '/blobServices/default' to the storage_account.id see desc. above
   parent_id = "${azurerm_storage_account.cc_storage_account.id}/blobServices/default"
 
-  body = jsonencode({
+  body = {
     properties = {
       immutableStorageWithVersioning = {
         enabled = "${var.enableImmutability}"
       }
       publicAccess = "None"
     }
-  })
+  }
 }
 
 # Note. this azapi_resource can be replaced with the "service_endpoints = ["Microsoft.Storage"]" 
@@ -82,13 +82,13 @@ resource "azapi_update_resource" "cces_subnet_storage_endpoint" {
   type        = "Microsoft.Network/virtualNetworks/subnets@2023-02-01"
   resource_id = data.azurerm_subnet.cces_subnet.id
 
-  body = jsonencode({
+  body = {
     properties = {
       serviceEndpoints = [{
         service = "Microsoft.Storage"
       }]
     }
-  })
+  }
 }
 
 

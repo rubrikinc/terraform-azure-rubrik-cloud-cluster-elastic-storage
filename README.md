@@ -238,13 +238,13 @@ resource "azapi_update_resource" "cces_subnet_storage_endpoint" {
   type        = "Microsoft.Network/virtualNetworks/subnets@2023-02-01"
   resource_id = data.azurerm_subnet.cces_subnet.id
 
-  body = jsonencode({
+  body = {
     properties = {
       serviceEndpoints = [{
         service = "Microsoft.Storage"
       }]
     }
-  })
+  }
 }
 ```
 

@@ -7,6 +7,7 @@ terraform {
     }
     azapi = {
       source = "Azure/azapi"
+      version = ">=2.0.0"
     }
     rubrik = {
       source   = "rubrikinc/rubrik/rubrik"
