@@ -58,6 +58,7 @@ The following are the variables accepted by the module.
 | azure_location            | The region to deploy Rubrik Cloud Cluster nodes.                                                                                               | string |                            |   yes    |
 | azure_resource_group      | The Azure Resource Group into which deploy Rubrik Cloud Cluster resources.                                                                     | string |                            |   yes    |
 | azure_resource_lock       | If true, enables Azure's Resource Lock on the Rubrik Cloud Cluster nodes.                                                                      |  bool  |            true            |    no    |
+| azure_subscription_id     | The ID of the Azure subscription where Cloud Cluster will be deployed.                                                                         | string |                            |   yes    |
 | azure_tags                | Tags to add to the resources that this Terraform script creates, including the Rubrik cluster nodes.                                           |  map   |                            |    no    |
 
 

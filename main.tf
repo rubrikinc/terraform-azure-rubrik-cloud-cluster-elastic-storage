@@ -155,11 +155,11 @@ resource "azurerm_ssh_public_key" "cc_public_ssh_key" {
 ######################k#####################
 
 resource "azurerm_network_interface" "cces_nic" {
-  for_each                      = toset(local.cluster_node_names)
-  name                          = "${each.value}-nic"
-  resource_group_name           = azurerm_resource_group.cc_rg.name
-  location                      = azurerm_resource_group.cc_rg.location
-  enable_accelerated_networking = true
+  for_each                        = toset(local.cluster_node_names)
+  name                            = "${each.value}-nic"
+  resource_group_name             = azurerm_resource_group.cc_rg.name
+  location                        = azurerm_resource_group.cc_rg.location
+  accelerated_networking_enabled  = true
 
   ip_configuration {
   name                          = each.value

@@ -16,6 +16,11 @@ variable "azure_resource_lock" {
   default = true
 }
 
+variable "azure_subscription_id" {
+  description = "Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources."
+  type        = string
+}
+
 variable "azure_tags" {
   description = "Tags to add to the Azure resources that this Terraform script creates, including the Rubrik cluster nodes."
   type        = map(string)

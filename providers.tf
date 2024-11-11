@@ -3,6 +3,7 @@ terraform {
   required_providers {
     azurerm = {
       source = "hashicorp/azurerm"
+      version = ">=4.9.0"
     }
     azapi = {
       source = "Azure/azapi"
@@ -21,6 +22,7 @@ provider "azurerm" {
       recover_soft_deleted_key_vaults = true
     }
   }
+  subscription_id = var.azure_subscription_id
 }
 
 provider "azapi" {}
