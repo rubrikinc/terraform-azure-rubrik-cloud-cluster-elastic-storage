@@ -31,12 +31,22 @@ variable "azure_cces_plan_name" {
 variable "azure_cces_sku" {
   description = "The SKU for the Azure Marketplace Image of CCES to deploy. See the README.MD file of this module for information on finding the SKU."
   type        = string
+
+  validation {
+    condition     = can(regex(local.sku_regex, var.azure_cces_sku))
+    error_message = "The SKU must be in the format 'rubrik-cdm-<version>'. For example, 'rubrik-cdm-92'."
+  }
 }
 
 variable "azure_cces_version" {
   description = "The version of CCES to deploy. Use 'latest' to deploy the latest available version. Note: This only applies to the version within a SKU (major/minor version)."
   type        = string
-  default     = "latest"  
+  default     = "latest"
+
+  validation {
+    condition     = can(regex(local.version_regex, var.azure_cces_version))
+    error_message = "The version must be in the format '<minor>.<maintenance>.<build>' for CDM version 8.1 and later or '<major>.<minor>.<maintenance>' for CDM 8.0 and earlier. For example, '2.1.29213'."
+  }
 }
 
 variable "azure_cces_vm_size" {

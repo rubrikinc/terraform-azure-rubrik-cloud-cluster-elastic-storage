@@ -155,11 +155,11 @@ resource "azurerm_ssh_public_key" "cc_public_ssh_key" {
 ######################k#####################
 
 resource "azurerm_network_interface" "cces_nic" {
-  for_each                      = toset(local.cluster_node_names)
-  name                          = "${each.value}-nic"
-  resource_group_name           = azurerm_resource_group.cc_rg.name
-  location                      = azurerm_resource_group.cc_rg.location
-  enable_accelerated_networking = true
+  for_each                       = toset(local.cluster_node_names)
+  name                           = "${each.value}-nic"
+  resource_group_name            = azurerm_resource_group.cc_rg.name
+  location                       = azurerm_resource_group.cc_rg.location
+  accelerated_networking_enabled = true
 
   ip_configuration {
   name                          = each.value
@@ -172,7 +172,7 @@ resource "azurerm_network_interface" "cces_nic" {
 }
 
 resource "azurerm_management_lock" "cces_nic" {
-  for_each   = var.azure_resource_lock == true ? toset(local.cluster_node_names) : null
+  for_each   = var.azure_resource_lock == true ? toset(local.cluster_node_names) : []
   name       = "${each.value}-nic"
   scope      = azurerm_network_interface.cces_nic[each.value].id
   lock_level = "CanNotDelete"
@@ -218,14 +218,14 @@ resource "azurerm_linux_virtual_machine" "cces_node" {
 }
 
 resource "azurerm_management_lock" "cces_node" {
-  for_each   = var.azure_resource_lock == true ? toset(local.cluster_node_names) : null
+  for_each   = var.azure_resource_lock == true ? toset(local.cluster_node_names) : []
   name        = "${each.value}-vm"
   scope      = azurerm_linux_virtual_machine.cces_node[each.value].id
   lock_level = "CanNotDelete"
   notes      = "Locked because this is a critical resource."
 }
 
-resource "azurerm_managed_disk" "cces_cache_disk" {
+resource "azurerm_managed_disk" "cces_data_disk" {
   for_each             = toset(local.cluster_node_names)
   name                 = "${each.value}-disk"
   location             = azurerm_resource_group.cc_rg.location
@@ -233,24 +233,79 @@ resource "azurerm_managed_disk" "cces_cache_disk" {
   storage_account_type = "Premium_LRS"
   create_option        = "Empty"
   disk_size_gb         = "512"
+  tags                 = var.azure_tags
+}
 
-  tags = var.azure_tags
+resource "azurerm_management_lock" "cces_data_disk" {
+  for_each   = var.azure_resource_lock == true ? toset(local.cluster_node_names) : []
+  name       = "${each.value}-disk"
+  scope      = azurerm_managed_disk.cces_data_disk[each.value].id
+  lock_level = "CanNotDelete"
+  notes      = "Locked because this is a critical resource."
+}
 
+resource "azurerm_virtual_machine_data_disk_attachment" "cces_data_disk" {
+  for_each           = toset(local.cluster_node_names)
+  managed_disk_id    = azurerm_managed_disk.cces_data_disk[each.value].id
+  virtual_machine_id = azurerm_linux_virtual_machine.cces_node[each.value].id
+  lun                = "0"
+  caching            = "ReadWrite"
+}
+
+# Create 2 additional disks, one for metadata and for cache, per cluster node
+# for CDM version 9.2.2 and later.
+
+resource "azurerm_managed_disk" "cces_metadata_disk" {
+  for_each             = local.split_disk ? toset(local.cluster_node_names) : []
+  name                 = "${each.value}-metadata-disk"
+  location             = azurerm_resource_group.cc_rg.location
+  resource_group_name  = azurerm_resource_group.cc_rg.name
+  storage_account_type = "Premium_LRS"
+  create_option        = "Empty"
+  disk_size_gb         = "132"
+  tags                 = var.azure_tags
+}
+
+resource "azurerm_management_lock" "cces_metadata_disk" {
+  for_each   = local.split_disk && var.azure_resource_lock ? toset(local.cluster_node_names) : []
+  name       = "${each.value}-metadata-disk"
+  scope      = azurerm_managed_disk.cces_metadata_disk[each.value].id
+  lock_level = "CanNotDelete"
+  notes      = "Locked because this is a critical resource."
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "cces_metadata_disk" {
+  for_each           = local.split_disk ? toset(local.cluster_node_names) : []
+  managed_disk_id    = azurerm_managed_disk.cces_metadata_disk[each.value].id
+  virtual_machine_id = azurerm_linux_virtual_machine.cces_node[each.value].id
+  lun                = "1"
+  caching            = "ReadWrite"
+}
+
+resource "azurerm_managed_disk" "cces_cache_disk" {
+  for_each             = local.split_disk ? toset(local.cluster_node_names) : []
+  name                 = "${each.value}-cache-disk"
+  location             = azurerm_resource_group.cc_rg.location
+  resource_group_name  = azurerm_resource_group.cc_rg.name
+  storage_account_type = "Premium_LRS"
+  create_option        = "Empty"
+  disk_size_gb         = "206"
+  tags                 = var.azure_tags
 }
 
 resource "azurerm_management_lock" "cces_cache_disk" {
-  for_each   = var.azure_resource_lock == true ? toset(local.cluster_node_names) : null
-  name       = "${each.value}-disk"
+  for_each   = local.split_disk && var.azure_resource_lock ? toset(local.cluster_node_names) : []
+  name       = "${each.value}-cache-disk"
   scope      = azurerm_managed_disk.cces_cache_disk[each.value].id
   lock_level = "CanNotDelete"
   notes      = "Locked because this is a critical resource."
 }
 
 resource "azurerm_virtual_machine_data_disk_attachment" "cces_cache_disk" {
-  for_each           = toset(local.cluster_node_names)
+  for_each           = local.split_disk ? toset(local.cluster_node_names) : []
   managed_disk_id    = azurerm_managed_disk.cces_cache_disk[each.value].id
   virtual_machine_id = azurerm_linux_virtual_machine.cces_node[each.value].id
-  lun                = "0"
+  lun                = "2"
   caching            = "ReadWrite"
 }
 
@@ -261,7 +316,11 @@ resource "azurerm_virtual_machine_data_disk_attachment" "cces_cache_disk" {
 resource "time_sleep" "wait_for_nodes_to_boot" {
   create_duration = "300s"
 
-  depends_on = [azurerm_virtual_machine_data_disk_attachment.cces_cache_disk]
+  depends_on = [
+    azurerm_virtual_machine_data_disk_attachment.cces_data_disk,
+    azurerm_virtual_machine_data_disk_attachment.cces_metadata_disk,
+    azurerm_virtual_machine_data_disk_attachment.cces_cache_disk,
+  ]
 }
 
 resource "polaris_cdm_bootstrap_cces_azure" "bootstrap_cces_azure" {
