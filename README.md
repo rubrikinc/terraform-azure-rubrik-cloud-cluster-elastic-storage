@@ -17,8 +17,8 @@ Here are some resources to get you started! If you find any challenges from this
 There are a few services you'll need in order to get this project off the ground:
 
 - [Terraform](https://www.terraform.io/downloads.html) v1.5.1 or greater
-- [Rubrik Provider for Terraform](https://github.com/rubrikinc/terraform-provider-rubrik) - provides Terraform functions for Rubrik
-  - Only required to use the `rubrik_bootstrap_cces_azure` resource.
+- [Rubrik RSC Provider for Terraform](https://github.com/rubrikinc/terraform-provider-polaris) - provides Terraform functions for Rubrik
+  - Only required to use the `polaris_cdm_bootstrap_cces_azure` resource.
 - [Install the Azure CLI tools](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) - Needed for Terraform to authenticate with Azure
 
 ### Usage
