@@ -149,7 +149,7 @@ westus2     rubrik-cdm-90
 Tke SKUs in the output will represent the major and minor version numbers of the various Rubrik CCES releases. For example `rubrik-cdm-90` represents Rubrik CDM v9.0.x. The specific
 maintenance release will be selected later on. select the SKU name for the version of CCES that you plan to use.
 
-Next the plan name for the SKU that has been selected must obtained. Generally with CCES the plan name and the SKU name are the same, however, it is best to check in case they do differ.
+Next the plan name for the SKU that has been selected must be obtained. Generally with CCES the plan name and the SKU name are the same, however, it is best to check in case they do differ.
 To do this run the command:
 
 `az vm image show --location <location> --urn rubrik-inc:rubrik-data-protection:<SKU>:latest --query plan.name --output tsv`
@@ -161,7 +161,6 @@ Example:
 
 ```
 -> az vm image show --location westus2 --urn rubrik-inc:rubrik-data-protection:rubrik-cdm-90:latest --query plan.name --output tsv    
-rubrik-cdm-90
 ```
 
 Next the Azure Marketplace Agreement must be accepted. To do this run the command:
