@@ -2,15 +2,16 @@ terraform {
   required_version = ">= 1.2.0"
   required_providers {
     azurerm = {
-      source = "hashicorp/azurerm"
-      version = ">=4.9.0"
+      source  = "hashicorp/azurerm"
+      version = "~>4.14.0"
     }
     azapi = {
       source = "Azure/azapi"
       version = ">=2.0.0"
     }
-    rubrik = {
-      source   = "rubrikinc/rubrik/rubrik"
+    polaris = {
+      source  = "rubrikinc/polaris"
+      version = "=0.8.0-beta.4"
     }
   }
 }
@@ -28,8 +29,4 @@ provider "azurerm" {
 
 provider "azapi" {}
 
-provider "rubrik" {
-  node_ip  = local.cluster_node_ips.0
-  username = ""
-  password = ""
-}
+provider "polaris" {}
