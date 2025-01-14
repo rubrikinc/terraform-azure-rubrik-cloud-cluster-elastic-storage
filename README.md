@@ -17,8 +17,8 @@ Here are some resources to get you started! If you find any challenges from this
 There are a few services you'll need in order to get this project off the ground:
 
 - [Terraform](https://www.terraform.io/downloads.html) v1.5.1 or greater
-- [Rubrik Provider for Terraform](https://github.com/rubrikinc/terraform-provider-rubrik) - provides Terraform functions for Rubrik
-  - Only required to use the `rubrik_bootstrap_cces_azure` resource.
+- [Rubrik RSC Provider for Terraform](https://github.com/rubrikinc/terraform-provider-polaris) - provides Terraform functions for Rubrik
+  - Only required to use the `polaris_cdm_bootstrap_cces_azure` resource.
 - [Install the Azure CLI tools](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) - Needed for Terraform to authenticate with Azure
 
 ### Usage
@@ -41,7 +41,7 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
   admin_email           = "build@rubrik.com"
   admin_password        = "RubrikGoForward"
   dns_search_domain     = ["rubrikdemo.com"]
-  dns_name_servers      = ["192.168.100.5"."192.168.100.6"]
+  dns_name_servers      = ["192.168.100.5","192.168.100.6"]
   ntp_server1_name      = "8.8.8.8"
   ntp_server2_name      = "8.8.4.4"
 }
@@ -150,7 +150,7 @@ westus2     rubrik-cdm-90
 Tke SKUs in the output will represent the major and minor version numbers of the various Rubrik CCES releases. For example `rubrik-cdm-90` represents Rubrik CDM v9.0.x. The specific
 maintenance release will be selected later on. select the SKU name for the version of CCES that you plan to use.
 
-Next the plan name for the SKU that has been selected must obtained. Generally with CCES the plan name and the SKU name are the same, however, it is best to check in case they do differ.
+Next the plan name for the SKU that has been selected must be obtained. Generally with CCES the plan name and the SKU name are the same, however, it is best to check in case they do differ.
 To do this run the command:
 
 `az vm image show --location <location> --urn rubrik-inc:rubrik-data-protection:<SKU>:latest --query plan.name --output tsv`
@@ -162,7 +162,6 @@ Example:
 
 ```
 -> az vm image show --location westus2 --urn rubrik-inc:rubrik-data-protection:rubrik-cdm-90:latest --query plan.name --output tsv    
-rubrik-cdm-90
 ```
 
 Next the Azure Marketplace Agreement must be accepted. To do this run the command:
