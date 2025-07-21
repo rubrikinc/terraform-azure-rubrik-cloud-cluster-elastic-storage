@@ -47,67 +47,57 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 }
 ```
 
-### Inputs
+## Changelog
 
-The following are the variables accepted by the module.
+### v1.0.0
+- Remove hard-coded provider setup
+- Add TF-Docs
+- Fix SKU Regex
+- Bump RSC provider to 1.1.1
 
-#### General Settings
+### v0.2.0
+- Initial stable release of the Terraform module for deploying Rubrik Cloud Cluster Elastic Storage (CCES) in Azure
+- Support for deploying multi-node CCES clusters with configurable node count
+- Automated Azure Storage Account and container creation with optional immutability features
+- SSH key pair generation and secure storage in Azure Key Vault
+- Network interface and VM provisioning with marketplace image support
+- Automatic disk attachment for data, metadata, and cache storage (split disk support for CDM 9.2.2+)
+- Bootstrap integration using Polaris provider for automated cluster configuration
+- Comprehensive variable validation and resource locking capabilities
+- Support for custom Azure tags and resource group management
+- Initial module development and testing
+- Basic CCES deployment functionality
+- Core Azure resource provisioning
 
-| Name                      | Description                                                                                                                                    |  Type  |          Default           | Required |
-| --------------------------| ---------------------------------------------------------------------------------------------------------------------------------------------- | :----: | :------------------------: | :------: |
-| azure_location            | The region to deploy Rubrik Cloud Cluster nodes.                                                                                               | string |                            |   yes    |
-| azure_resource_group      | The Azure Resource Group into which deploy Rubrik Cloud Cluster resources.                                                                     | string |                            |   yes    |
-| azure_resource_lock       | If true, enables Azure's Resource Lock on the Rubrik Cloud Cluster nodes.                                                                      |  bool  |            true            |    no    |
-| azure_subscription_id     | The ID of the Azure subscription where Cloud Cluster will be deployed.                                                                         | string |                            |   yes    |
-| azure_tags                | Tags to add to the resources that this Terraform script creates, including the Rubrik cluster nodes.                                           |  map   |                            |    no    |
+## Upgrading
 
+### v0.2.0 to v1.0.0
 
-#### Instance/Node Settings
+1. Update the `source` line in the `module` block to `source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"`
+2. Update the `version` line in the `module` block to `version = "1.0.0"`
+3. Configure providers in your `main.tf`:
+```hcl
+# Configure the Azure Provider
+provider "azurerm" {
+  features {
+    key_vault {
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
+  }
+  subscription_id = "12345678-1234-1234-1234-123456789012"
+}
 
-| Name                      | Description                                                                                                                                    |  Type  |          Default           | Required |
-| --------------------------| -----------------------------------------------------------------------------------------------------------------------------------------------| :----: | :------------------------: | :------: |
-| azure_cces_vm_size        | The virtual machine size of the Rubrik Cloud Cluster nodes. CC-ES requires Standard_D8s_v5 or Standard_D16s_v5.                                | string |      Standard_D16s_v5      |   yes    |
-| azure_cces_plan_name      | The Azure Marketplace Plan Name/ID of the CCES image to deploy. See the README.MD file of this module for information on finding the plan name.| string |                            |   yes    |
-| azure_cces_sku            | The SKU for the Azure Marketplace Image of CCES to deploy. See the README.MD file of this module for information on finding the SKU.           | string |                            |   yes    |
-| azure_cces_version        | The version of CCES to deploy. Use 'latest' to deploy the latest available version. Note: This only applies to the version within a SKU.       | string |          latest            |   yes    |
-| azure_key_vault_name      | The name of the Azure Key Vault to create, into which the CCES private ssh key will be stored.                                                 | string |       [cluster_name]       |   yes    |
-| number_of_nodes           | The total number of nodes in Rubrik Cloud Cluster.                                                                                             |  int   |             3              |   yes    |
+module "rubrik_azure_cloud_cluster_elastic_storage" {
+  source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
+  
+  <existing variables>
+}
 
-
-#### Network Settings
-
-| Name                      | Description                                                                                                                                    |  Type  |          Default           | Required |
-| --------------------------| ---------------------------------------------------------------------------------------------------------------------------------------------- | :----: | :------------------------: | :------: |
-| azure_subnet_name         | Name of the Azure subnet to deploy Rubrik Cloud Cluster into. This subnet must be in the VNet that is defined in the 'azure_vnet_name' variable| string |                            |   yes    |
-| azure_vnet_name           | Name of the Azure Virtual Network (VNet) to deploy Rubrik Cloud Cluster ES into.                                                               | string |                            |   yes    |
-| azure_vnet_rg_name        | Name of the Resource Group of the Azure VNet that is defined in the 'azure_vnet_name' variable.                                                | string |                            |   yes    |
-
-#### Storage Settings
-
-| Name                      | Description                                                                                                                                    |  Type  |          Default           | Required |
-| --------------------------| ---------------------------------------------------------------------------------------------------------------------------------------------- | :----: | :------------------------: | :------: |
-| azure_sa_name             | The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources.                                                            | string |                            |   yes    |
-| azure_sa_replication_type | The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster.                                                    | string |            LRS             |   yes    |
-| enable_immutability       | Enable immutability on the S3 objects that CCES uses. Default value is false.                                                                  |  bool  |            true            |    no    |
-
-#### Bootstrap Settings
-
-| Name                      | Description                                                                                                                                    |  Type  |          Default           | Required |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | :----: | :------------------------: | :------: |
-| cluster_name              | Unique name to assign to Rubrik Cloud Cluster. Also used for EC2 instance name tag. For example, rubrik-1, rubrik-2 etc.                       | string |                            |   yes    |
-| admin_email               | The Rubrik Cloud Cluster sends messages for the admin account to this email address.                                                           | string |                            |   yes    |
-| admin_password            | Password for the Rubrik Cloud Cluster admin account.                                                                                           | string |      RubrikGoForward       |    no    |
-| dns_search_domain         | List of search domains that the DNS Service will use to resolve host names that are not fully qualified.                                       |  list  |                            |   yes    |
-| dns_name_servers          | List of the IPv4 addresses of the DNS servers.                                                                                                 |  list  |    ["169.254.169.253"]     |    no    |
-| ntp_server1_name          | The FQDN or IPv4 addresses of network time protocol (NTP) server #1.                                                                           | string |          8.8.8.8           |   yes    |
-| ntp_server1_key_id        | The ID # of the key for NTP server #1. Typically is set to 0. (Required with `ntp_server1_key` & `ntp_server1_key_type`)                       |  int   |             0              |    no    |
-| ntp_server1_key           | Symmetric key material for NTP server #1. (Required with `ntp_server1_key_id` and `ntp_server1_key_type`)                                      | string |                            |    no    |
-| ntp_server1_key_type      | Symmetric key type for NTP server #1. (Required with `ntp_server1_key` and `ntp_server1_key_id`)                                               | string |                            |    no    |
-| ntp_server2_name          | The FQDN or IPv4 addresses of network time protocol (NTP) server #2.                                                                           | string |          8.8.4.4           |   yes    |
-| ntp_server2_key_id        | The ID # of the key for NTP server #2. Typically is set to 1. (Required with `ntp_server1_key` & `ntp_server1_key_type`)                       |  int   |             1              |    no    |
-| ntp_server2_key           | Symmetric key material for NTP server #2. (Required with `ntp_server1_key_id` and `ntp_server1_key_type`)                                      | string |                            |    no    |
-| ntp_server2_key_type      | Symmetric key type for NTP server #2. (Required with `ntp_server1_key` and `ntp_server1_key_id`)                                               | string |                            |    no    |
-| timeout                   | The number of seconds to wait to establish a connection the Rubrik cluster before returning a timeout error.                                   |  int   |             15             |    no    |
+```
+4. Run `terraform init --upgrade` to update the module
+5. Run `terraform plan` to verify the upgrade
+6. Run `terraform apply` to apply the upgrade
 
 ### Login to Azure
 
@@ -225,7 +215,6 @@ represented in the marketplace. The build numbers correspond to the various patc
 Set the Terraform variable `azure_cces_version` to the version number from the list that is desired. Setting the `azure_cces_version` variable to `latest` will deploy the latest
 version of CCES from the list.
 
-
 ### Subnet Network Storage Endpoint
 
 This module will attempt to enable the Storage Endpoint in the subnet where CCES is deployed. A Storage Endpoint is required by CCES. If a VNet Storage Endpoint or private Storage
@@ -294,10 +283,104 @@ Run `terraform plan` to get information about what will happen when we apply the
 
 We can now apply the configuration to create the cluster using the `terraform apply` command.
 
-
 ### Destroying
 
 Once the Cloud Cluster is no longer required, it can be destroyed using the `terraform destroy` command, and entering `yes` when prompted.
+
+<!-- BEGIN_TF_DOCS -->
+## Requirements
+
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.2.0 |
+| <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) | >=2.0.0 |
+| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~>4.14.0 |
+| <a name="requirement_polaris"></a> [polaris](#requirement\_polaris) | ~>1.1.1 |
+
+## Providers
+
+| Name | Version |
+|------|---------|
+| <a name="provider_azapi"></a> [azapi](#provider\_azapi) | 2.5.0 |
+| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.14.0 |
+| <a name="provider_polaris"></a> [polaris](#provider\_polaris) | 0.8.0-beta.4 |
+| <a name="provider_time"></a> [time](#provider\_time) | 0.13.1 |
+| <a name="provider_tls"></a> [tls](#provider\_tls) | 4.1.0 |
+
+## Resources
+
+| Name | Type |
+|------|------|
+| [azapi_resource.cc_container](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) | resource |
+| [azapi_update_resource.cces_subnet_storage_endpoint](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/update_resource) | resource |
+| [azurerm_key_vault.cc_key_vault](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault) | resource |
+| [azurerm_key_vault_secret.cc_private_ssh_key](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault_secret) | resource |
+| [azurerm_linux_virtual_machine.cces_node](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/linux_virtual_machine) | resource |
+| [azurerm_managed_disk.cces_cache_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_disk) | resource |
+| [azurerm_managed_disk.cces_data_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_disk) | resource |
+| [azurerm_managed_disk.cces_metadata_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_disk) | resource |
+| [azurerm_management_lock.cces_cache_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
+| [azurerm_management_lock.cces_data_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
+| [azurerm_management_lock.cces_metadata_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
+| [azurerm_management_lock.cces_nic](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
+| [azurerm_management_lock.cces_node](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
+| [azurerm_network_interface.cces_nic](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_interface) | resource |
+| [azurerm_resource_group.cc_rg](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group) | resource |
+| [azurerm_ssh_public_key.cc_public_ssh_key](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/ssh_public_key) | resource |
+| [azurerm_storage_account.cc_storage_account](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account) | resource |
+| [azurerm_virtual_machine_data_disk_attachment.cces_cache_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_data_disk_attachment) | resource |
+| [azurerm_virtual_machine_data_disk_attachment.cces_data_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_data_disk_attachment) | resource |
+| [azurerm_virtual_machine_data_disk_attachment.cces_metadata_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_data_disk_attachment) | resource |
+| [polaris_cdm_bootstrap_cces_azure.bootstrap_cces_azure](https://registry.terraform.io/providers/rubrikinc/polaris/latest/docs/resources/cdm_bootstrap_cces_azure) | resource |
+| [time_sleep.wait_for_nodes_to_boot](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/sleep) | resource |
+| [tls_private_key.cc-key](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
+| [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
+| [azurerm_subnet.cces_subnet](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/subnet) | data source |
+| [azurerm_subscription.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/subscription) | data source |
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_admin_email"></a> [admin\_email](#input\_admin\_email) | The Rubrik Cloud Cluster sends messages for the admin account to this email address. | `string` | n/a | yes |
+| <a name="input_admin_password"></a> [admin\_password](#input\_admin\_password) | Password for the Rubrik Cloud Cluster admin account. | `string` | `"ChangeMe"` | no |
+| <a name="input_azure_cces_plan_name"></a> [azure\_cces\_plan\_name](#input\_azure\_cces\_plan\_name) | The Azure Marketplace Plan Name/ID of the CCES image to deploy. See the README.MD file of this module for information on finding the plan name. | `any` | n/a | yes |
+| <a name="input_azure_cces_sku"></a> [azure\_cces\_sku](#input\_azure\_cces\_sku) | The SKU for the Azure Marketplace Image of CCES to deploy. See the README.MD file of this module for information on finding the SKU. | `string` | n/a | yes |
+| <a name="input_azure_cces_version"></a> [azure\_cces\_version](#input\_azure\_cces\_version) | The version of CCES to deploy. Use 'latest' to deploy the latest available version. Note: This only applies to the version within a SKU (major/minor version). | `string` | `"latest"` | no |
+| <a name="input_azure_cces_vm_size"></a> [azure\_cces\_vm\_size](#input\_azure\_cces\_vm\_size) | The Azure VM Machine Type to use for the Cloud Cluster nodes. | `string` | `"Standard_D16s_v5"` | no |
+| <a name="input_azure_key_vault_name"></a> [azure\_key\_vault\_name](#input\_azure\_key\_vault\_name) | The name of the Azure Key Vault to create, into which the CCES private ssh key will be stored. | `string` | `""` | no |
+| <a name="input_azure_location"></a> [azure\_location](#input\_azure\_location) | The region to deploy Rubrik Cloud Cluster resources. | `any` | n/a | yes |
+| <a name="input_azure_resource_group"></a> [azure\_resource\_group](#input\_azure\_resource\_group) | The Azure Resource Group into which deploy Rubrik Cloud Cluster resources. | `string` | `"RubrikCloudCluster"` | no |
+| <a name="input_azure_resource_lock"></a> [azure\_resource\_lock](#input\_azure\_resource\_lock) | Enable the Azure Resource Lock on critical components that are created by this module. | `bool` | `true` | no |
+| <a name="input_azure_sa_name"></a> [azure\_sa\_name](#input\_azure\_sa\_name) | The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources. | `string` | n/a | yes |
+| <a name="input_azure_sa_replication_type"></a> [azure\_sa\_replication\_type](#input\_azure\_sa\_replication\_type) | The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster. | `string` | `"LRS"` | no |
+| <a name="input_azure_subnet_name"></a> [azure\_subnet\_name](#input\_azure\_subnet\_name) | Name of the Azure subnet to deploy Rubrik Cloud Cluster into. This subnet must be in the VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
+| <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. | `string` | n/a | yes |
+| <a name="input_azure_tags"></a> [azure\_tags](#input\_azure\_tags) | Tags to add to the Azure resources that this Terraform script creates, including the Rubrik cluster nodes. | `map(string)` | `{}` | no |
+| <a name="input_azure_vnet_name"></a> [azure\_vnet\_name](#input\_azure\_vnet\_name) | Name of the Azure Virtual Network (VNet) to deploy Rubrik Cloud Cluster ES into. | `string` | n/a | yes |
+| <a name="input_azure_vnet_rg_name"></a> [azure\_vnet\_rg\_name](#input\_azure\_vnet\_rg\_name) | Name of the Resource Group of the Azure VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
+| <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Unique name to assign to the Rubrik Cloud Cluster. This will also be used as part of the Storage Account name. For example, rubrik-cloud-cluster-1, rubrik-cloud-cluster-2 etc. | `string` | `"rubrik-cloud-cluster"` | no |
+| <a name="input_dns_name_servers"></a> [dns\_name\_servers](#input\_dns\_name\_servers) | List of the IPv4 addresses of the DNS servers. | `list(any)` | <pre>[<br/>  "169.254.169.253"<br/>]</pre> | no |
+| <a name="input_dns_search_domain"></a> [dns\_search\_domain](#input\_dns\_search\_domain) | List of search domains that the DNS Service will use to resolve host names that are not fully qualified. | `list(any)` | `[]` | no |
+| <a name="input_enableImmutability"></a> [enableImmutability](#input\_enableImmutability) | Enables object lock and versioning on the Storage Account and Container. Sets the object lock flag during bootstrap. Not supported on CDM v8.0.1 and earlier. | `bool` | `true` | no |
+| <a name="input_ntp_server1_key"></a> [ntp\_server1\_key](#input\_ntp\_server1\_key) | Symmetric key material for NTP server #1. | `string` | `""` | no |
+| <a name="input_ntp_server1_key_id"></a> [ntp\_server1\_key\_id](#input\_ntp\_server1\_key\_id) | The ID number of the symmetric key used with NTP server #1. (Typically this is 0) | `number` | `0` | no |
+| <a name="input_ntp_server1_key_type"></a> [ntp\_server1\_key\_type](#input\_ntp\_server1\_key\_type) | Symmetric key type for NTP server #1. | `string` | `""` | no |
+| <a name="input_ntp_server1_name"></a> [ntp\_server1\_name](#input\_ntp\_server1\_name) | The FQDN or IPv4 addresses of network time protocol (NTP) server #1. | `string` | `"8.8.8.8"` | no |
+| <a name="input_ntp_server2_key"></a> [ntp\_server2\_key](#input\_ntp\_server2\_key) | Symmetric key material for NTP server #2. | `string` | `""` | no |
+| <a name="input_ntp_server2_key_id"></a> [ntp\_server2\_key\_id](#input\_ntp\_server2\_key\_id) | The ID number of the symmetric key used with NTP server #2. (Typically this is 0) | `number` | `0` | no |
+| <a name="input_ntp_server2_key_type"></a> [ntp\_server2\_key\_type](#input\_ntp\_server2\_key\_type) | Symmetric key type for NTP server #2. | `string` | `""` | no |
+| <a name="input_ntp_server2_name"></a> [ntp\_server2\_name](#input\_ntp\_server2\_name) | The FQDN or IPv4 addresses of network time protocol (NTP) server #2. | `string` | `"8.8.4.4"` | no |
+| <a name="input_number_of_nodes"></a> [number\_of\_nodes](#input\_number\_of\_nodes) | The total number of nodes in Rubrik Cloud Cluster. | `number` | `3` | no |
+| <a name="input_timeout"></a> [timeout](#input\_timeout) | The number of seconds to wait to establish a connection the Rubrik cluster before returning a timeout error. | `string` | `"4m"` | no |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| <a name="output_key_vault_get_ssh_key_command"></a> [key\_vault\_get\_ssh\_key\_command](#output\_key\_vault\_get\_ssh\_key\_command) | n/a |
+| <a name="output_rubrik_cloud_cluster_ip_addresses"></a> [rubrik\_cloud\_cluster\_ip\_addresses](#output\_rubrik\_cloud\_cluster\_ip\_addresses) | n/a |
+<!-- END_TF_DOCS -->
 
 ## How You Can Help
 
