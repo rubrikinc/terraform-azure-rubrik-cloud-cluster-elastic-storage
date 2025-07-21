@@ -88,10 +88,6 @@ provider "azurerm" {
   subscription_id = "12345678-1234-1234-1234-123456789012"
 }
 
-provider "azapi" {}
-
-provider "polaris" {}
-
 module "rubrik_azure_cloud_cluster_elastic_storage" {
   source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
   
