@@ -11,22 +11,7 @@ terraform {
     }
     polaris = {
       source  = "rubrikinc/polaris"
-      version = "=0.8.0-beta.4"
+      version = "~>1.1.1"
     }
   }
 }
-
-# Configure the Azure Provider
-provider "azurerm" {
-  features {
-    key_vault {
-      purge_soft_delete_on_destroy    = true
-      recover_soft_deleted_key_vaults = true
-    }
-  }
-  subscription_id = var.azure_subscription_id
-}
-
-provider "azapi" {}
-
-provider "polaris" {}
