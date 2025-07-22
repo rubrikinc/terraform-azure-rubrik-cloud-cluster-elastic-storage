@@ -17,8 +17,14 @@ variable "azure_resource_lock" {
 }
 
 variable "azure_subscription_id" {
-  description = "Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources."
+  description = "Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. Deprecated: This variable is no longer required as the subscription ID is now determined by the provider configuration."
   type        = string
+  default     = null
+
+  validation {
+    condition     = var.azure_subscription_id == null ? true : can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.azure_subscription_id))
+    error_message = "The subscription ID must be a valid UUID format if provided."
+  }
 }
 
 variable "azure_tags" {
@@ -187,4 +193,11 @@ variable "timeout" {
   description = "The number of seconds to wait to establish a connection the Rubrik cluster before returning a timeout error."
   type        = string
   default     = "4m"
+}
+
+check "depercations" {
+  assert {
+    condition     = var.azure_subscription_id == null
+    error_message = "The 'azure_subscription_id' variable is deprecated and should not be used as it will be removed in a future release. Configure the subscription ID in the azurerm provider configuration instead."
+  }
 }

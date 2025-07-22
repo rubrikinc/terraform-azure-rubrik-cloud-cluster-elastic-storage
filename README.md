@@ -24,8 +24,18 @@ There are a few services you'll need in order to get this project off the ground
 ### Usage
 
 ```hcl
+provider "azurerm" {
+  features {
+    key_vault {
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
+  }
+  subscription_id = "12345678-1234-1234-1234-123456789012"
+}
 module "rubrik_azure_cloud_cluster_elastic_storage" {
   source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
+  version = "1.0.1"
 
   azure_location        = "West US2"
   azure_resource_group  = "Rubrik-CCES" 
@@ -49,6 +59,9 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 
 ## Changelog
 
+### v1.0.1
+- Deprecate `azure_subscription_id` variable in favor of provider configuration provided by the root module.
+
 ### v1.0.0
 - Remove hard-coded provider setup
 - Add TF-Docs
@@ -70,6 +83,34 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 - Core Azure resource provisioning
 
 ## Upgrading
+
+### v1.0.0 to v1.0.1
+
+1. Update the `version` line in the `module` block to `version = "1.0.1"`
+3. Run `terraform init --upgrade` to update the module
+4. Run `terraform plan` to verify no changes in the diff:
+```log
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
+╷
+│ Warning: Check block assertion failed
+│ 
+│   on ../../terraform-azure-rubrik-cloud-cluster-elastic-storage/variables.tf line 200, in check "depercations":
+│  200:     condition     = var.azure_subscription_id == null
+│     ├────────────────
+│     │ var.azure_subscription_id is "12345678-1234-1234-1234-123456789012"
+│ 
+│ The 'azure_subscription_id' variable is deprecated and should not be used as it will be removed in a future release. Configure the subscription ID in the azurerm provider configuration instead.
+╵
+```
+5. You are safe to remove the `azure_subscription_id` variable from the `module` configuration.
+4. Run `terraform plan` to verify no changes in the diff:
+```log
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
+```
 
 ### v0.2.0 to v1.0.0
 
@@ -355,7 +396,7 @@ Once the Cloud Cluster is no longer required, it can be destroyed using the `ter
 | <a name="input_azure_sa_name"></a> [azure\_sa\_name](#input\_azure\_sa\_name) | The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources. | `string` | n/a | yes |
 | <a name="input_azure_sa_replication_type"></a> [azure\_sa\_replication\_type](#input\_azure\_sa\_replication\_type) | The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster. | `string` | `"LRS"` | no |
 | <a name="input_azure_subnet_name"></a> [azure\_subnet\_name](#input\_azure\_subnet\_name) | Name of the Azure subnet to deploy Rubrik Cloud Cluster into. This subnet must be in the VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
-| <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. | `string` | n/a | yes |
+| <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. DEPRECATED: This variable is no longer required as the subscription ID is now determined by the provider configuration. | `string` | `null` | no |
 | <a name="input_azure_tags"></a> [azure\_tags](#input\_azure\_tags) | Tags to add to the Azure resources that this Terraform script creates, including the Rubrik cluster nodes. | `map(string)` | `{}` | no |
 | <a name="input_azure_vnet_name"></a> [azure\_vnet\_name](#input\_azure\_vnet\_name) | Name of the Azure Virtual Network (VNet) to deploy Rubrik Cloud Cluster ES into. | `string` | n/a | yes |
 | <a name="input_azure_vnet_rg_name"></a> [azure\_vnet\_rg\_name](#input\_azure\_vnet\_rg\_name) | Name of the Resource Group of the Azure VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
