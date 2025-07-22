@@ -49,6 +49,9 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 
 ## Changelog
 
+### v1.0.1
+- Deprecate `azure_subscription_id` variable in favor of provider configuration
+
 ### v1.0.0
 - Remove hard-coded provider setup
 - Add TF-Docs
@@ -70,6 +73,14 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 - Core Azure resource provisioning
 
 ## Upgrading
+
+### v1.0.0 to v1.0.1
+
+1. Update the `source` line in the `module` block to `source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"`
+2. Update the `version` line in the `module` block to `version = "1.0.1"`
+3. Remove the `azure_subscription_id` variable from the `module` block if present.
+4. Run `terraform init --upgrade` to update the module
+5. Run `terraform plan` to verify the upgrade
 
 ### v0.2.0 to v1.0.0
 
@@ -355,7 +366,7 @@ Once the Cloud Cluster is no longer required, it can be destroyed using the `ter
 | <a name="input_azure_sa_name"></a> [azure\_sa\_name](#input\_azure\_sa\_name) | The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources. | `string` | n/a | yes |
 | <a name="input_azure_sa_replication_type"></a> [azure\_sa\_replication\_type](#input\_azure\_sa\_replication\_type) | The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster. | `string` | `"LRS"` | no |
 | <a name="input_azure_subnet_name"></a> [azure\_subnet\_name](#input\_azure\_subnet\_name) | Name of the Azure subnet to deploy Rubrik Cloud Cluster into. This subnet must be in the VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
-| <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. | `string` | n/a | yes |
+| <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. DEPRECATED: This variable is no longer required as the subscription ID is now determined by the provider configuration. | `string` | `null` | no |
 | <a name="input_azure_tags"></a> [azure\_tags](#input\_azure\_tags) | Tags to add to the Azure resources that this Terraform script creates, including the Rubrik cluster nodes. | `map(string)` | `{}` | no |
 | <a name="input_azure_vnet_name"></a> [azure\_vnet\_name](#input\_azure\_vnet\_name) | Name of the Azure Virtual Network (VNet) to deploy Rubrik Cloud Cluster ES into. | `string` | n/a | yes |
 | <a name="input_azure_vnet_rg_name"></a> [azure\_vnet\_rg\_name](#input\_azure\_vnet\_rg\_name) | Name of the Resource Group of the Azure VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |

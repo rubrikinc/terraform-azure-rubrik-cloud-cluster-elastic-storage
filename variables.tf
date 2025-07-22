@@ -17,8 +17,14 @@ variable "azure_resource_lock" {
 }
 
 variable "azure_subscription_id" {
-  description = "Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources."
+  description = "Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. DEPRECATED: This variable is no longer required as the subscription ID is now determined by the provider configuration."
   type        = string
+  default     = null
+
+  validation {
+    condition     = var.azure_subscription_id == null ? true : can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.azure_subscription_id))
+    error_message = "The subscription ID must be a valid UUID format if provided."
+  }
 }
 
 variable "azure_tags" {
