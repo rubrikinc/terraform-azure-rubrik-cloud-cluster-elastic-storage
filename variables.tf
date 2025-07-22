@@ -17,7 +17,7 @@ variable "azure_resource_lock" {
 }
 
 variable "azure_subscription_id" {
-  description = "Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. DEPRECATED: This variable is no longer required as the subscription ID is now determined by the provider configuration."
+  description = "Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. Deprecated: This variable is no longer required as the subscription ID is now determined by the provider configuration."
   type        = string
   default     = null
 
@@ -195,7 +195,7 @@ variable "timeout" {
   default     = "4m"
 }
 
-check "azure_subscription_id_deprecation" {
+check "depercations" {
   assert {
     condition     = var.azure_subscription_id == null
     error_message = "The 'azure_subscription_id' variable is deprecated and should not be used as it will be removed in a future release. Configure the subscription ID in the azurerm provider configuration instead."

@@ -24,8 +24,18 @@ There are a few services you'll need in order to get this project off the ground
 ### Usage
 
 ```hcl
+provider "azurerm" {
+  features {
+    key_vault {
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
+  }
+  subscription_id = "12345678-1234-1234-1234-123456789012"
+}
 module "rubrik_azure_cloud_cluster_elastic_storage" {
   source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
+  version = "1.0.1"
 
   azure_location        = "West US2"
   azure_resource_group  = "Rubrik-CCES" 
@@ -50,7 +60,7 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 ## Changelog
 
 ### v1.0.1
-- Deprecate `azure_subscription_id` variable in favor of provider configuration
+- Deprecate `azure_subscription_id` variable in favor of provider configuration provided by the root module.
 
 ### v1.0.0
 - Remove hard-coded provider setup
@@ -76,11 +86,31 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 
 ### v1.0.0 to v1.0.1
 
-1. Update the `source` line in the `module` block to `source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"`
-2. Update the `version` line in the `module` block to `version = "1.0.1"`
-3. Remove the `azure_subscription_id` variable from the `module` block if present.
-4. Run `terraform init --upgrade` to update the module
-5. Run `terraform plan` to verify the upgrade
+1. Update the `version` line in the `module` block to `version = "1.0.1"`
+3. Run `terraform init --upgrade` to update the module
+4. Run `terraform plan` to verify no changes in the diff:
+```log
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
+╷
+│ Warning: Check block assertion failed
+│ 
+│   on ../../terraform-azure-rubrik-cloud-cluster-elastic-storage/variables.tf line 200, in check "depercations":
+│  200:     condition     = var.azure_subscription_id == null
+│     ├────────────────
+│     │ var.azure_subscription_id is "12345678-1234-1234-1234-123456789012"
+│ 
+│ The 'azure_subscription_id' variable is deprecated and should not be used as it will be removed in a future release. Configure the subscription ID in the azurerm provider configuration instead.
+╵
+```
+5. You are safe to remove the `azure_subscription_id` variable from the `module` configuration.
+4. Run `terraform plan` to verify no changes in the diff:
+```log
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
+```
 
 ### v0.2.0 to v1.0.0
 
