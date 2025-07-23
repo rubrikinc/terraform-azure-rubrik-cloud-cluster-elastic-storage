@@ -142,6 +142,10 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 
 ### Login to Azure
 
+You can use the following methods to authenticate Terraform with Azure either by env variables or by using the Azure CLI.
+
+### Authenticating the Azure CLI
+
 Before running Terraform using the `azurerm_*` or `azapi_*` data sources and resources, an authentication with Azure is required. [Terraform Module for AzureRM CLI Authentication](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/azure_cli)
 provides a complete guide on how to authenticate Terraform with Azure. The following commands can be used from a command line interface with the [Microsoft Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 to manually run Terraform:
@@ -155,6 +159,28 @@ Next before running this module, the subscription must be selected. Do this by r
 `az account set --subscription <subscription_id>`
 
 Where <subscription_id> is the ID of the subscription where CCES will be deployed.
+
+### Authenticating with Environment Variables
+
+For environments that require a non-interactive authentication method such as Terraform Cloud, the Azure CLI can be authenticated using environment variables. The following environment variables must be set:
+
+`ARM_CLIENT_ID`
+`ARM_CLIENT_SECRET`
+`ARM_TENANT_ID`
+
+Additionally you can set `ARM_SUBSCRIPTION_ID` but if you specify the subscription in your root module this is not mandatory.
+
+The env variables can be set as follows in your terminal:
+
+```bash
+export ARM_CLIENT_ID="12345678-1234-1234-1234-123456789012"
+export ARM_CLIENT_SECRET="example-secret"
+export ARM_TENANT_ID="12345678-1234-1234-1234-123456789012"
+```
+
+Alternatively, they can be added to the workspace variables in Terraform Cloud.
+
+If you unsure how to get these, you can use the Azure CLI to create a service principal and get the values. See the [Azure CLI documentation](https://learn.microsoft.com/en-us/cli/azure/create-an-azure-service-principal-azure-cli) for more information.
 
 ### Accept the Azure Marketplace Agreement for CCES
 
