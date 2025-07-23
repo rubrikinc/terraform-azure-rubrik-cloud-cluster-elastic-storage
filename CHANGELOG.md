@@ -8,7 +8,7 @@
 * NTP servers can now be specified using a FQDN. Previously they were required to be IP addresses, now both IP addresses
   and FQDN are allowed.
 * Relax the version constraint for the Azure RM Terraform provider to `>=4.14.0`.
-* Bump the RSC (polaris) Terraform provider from version `~>1.1.1` to `>=1.1.2`.
+* Bump the RSC (polaris) Terraform provider from version `~>1.1.1` to `>=1.1.3`.
 * Run `terraform fmt` on the module.
 
 ### v1.0.1
