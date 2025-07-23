@@ -3,16 +3,16 @@
 #############################
 
 locals {
-  enableImmutability       = var.enableImmutability == true ? 1 : 0
-  cluster_node_names       = formatlist("${var.cluster_name}-%02s", range(1, var.number_of_nodes + 1))
-  cluster_node_ips         = [for i in azurerm_linux_virtual_machine.cces_node: i.private_ip_address]
+  enableImmutability = var.enableImmutability == true ? 1 : 0
+  cluster_node_names = formatlist("${var.cluster_name}-%02s", range(1, var.number_of_nodes + 1))
+  cluster_node_ips   = [for i in azurerm_linux_virtual_machine.cces_node : i.private_ip_address]
 }
 
 ##################
 # Data Gathering #
 ##################
 
-data azurerm_subscription "current" {}
+data "azurerm_subscription" "current" {}
 
 data "azurerm_subnet" "cces_subnet" {
   name                 = var.azure_subnet_name
@@ -38,15 +38,15 @@ resource "azurerm_resource_group" "cc_rg" {
 #####################################################
 
 resource "azurerm_storage_account" "cc_storage_account" {
-  name                            = var.azure_sa_name
-  resource_group_name             = azurerm_resource_group.cc_rg.name
-  location                        = azurerm_resource_group.cc_rg.location
-  account_tier                    = "Standard"
-  account_replication_type        = var.azure_sa_replication_type
-  public_network_access_enabled   = true
+  name                          = var.azure_sa_name
+  resource_group_name           = azurerm_resource_group.cc_rg.name
+  location                      = azurerm_resource_group.cc_rg.location
+  account_tier                  = "Standard"
+  account_replication_type      = var.azure_sa_replication_type
+  public_network_access_enabled = true
 
   blob_properties {
-    versioning_enabled          = var.enableImmutability
+    versioning_enabled = var.enableImmutability
   }
 
   tags = var.azure_tags
@@ -57,9 +57,8 @@ resource "azurerm_storage_account" "cc_storage_account" {
 # and https://github.com/hashicorp/terraform-provider-azurerm/issues/3722 for more details.
 
 resource "azapi_resource" "cc_container" {
-
   type = "Microsoft.Storage/storageAccounts/blobServices/containers@2022-09-01"
-  name      = var.cluster_name
+  name = var.cluster_name
 
   # We append '/blobServices/default' to the storage_account.id see desc. above
   parent_id = "${azurerm_storage_account.cc_storage_account.id}/blobServices/default"
@@ -91,7 +90,6 @@ resource "azapi_update_resource" "cces_subnet_storage_endpoint" {
   }
 }
 
-
 ########$$$$$$$#######################
 # Create SSH KEY PAIR FOR CCES Nodes #
 ###############$$$$$$#################
@@ -114,21 +112,21 @@ resource "azurerm_key_vault" "cc_key_vault" {
   sku_name = "standard"
 
   access_policy {
-  tenant_id = data.azurerm_client_config.current.tenant_id
-  object_id = data.azurerm_client_config.current.object_id
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
 
-  key_permissions = [
-    "Create",
-    "Get",
-  ]
+    key_permissions = [
+      "Create",
+      "Get",
+    ]
 
-  secret_permissions = [
-    "Set",
-    "Get",
-    "Delete",
-    "Purge",
-    "Recover"
-  ]
+    secret_permissions = [
+      "Set",
+      "Get",
+      "Delete",
+      "Purge",
+      "Recover"
+    ]
   }
 
   tags = var.azure_tags
@@ -162,9 +160,9 @@ resource "azurerm_network_interface" "cces_nic" {
   accelerated_networking_enabled = true
 
   ip_configuration {
-  name                          = each.value
-  subnet_id                     = data.azurerm_subnet.cces_subnet.id
-  private_ip_address_allocation = "Dynamic"
+    name                          = each.value
+    subnet_id                     = data.azurerm_subnet.cces_subnet.id
+    private_ip_address_allocation = "Dynamic"
   }
 
   tags = var.azure_tags
@@ -182,35 +180,35 @@ resource "azurerm_management_lock" "cces_nic" {
 # User needs to make sure that the marketplace agreement for CCES has been accepted before this runs.
 
 resource "azurerm_linux_virtual_machine" "cces_node" {
-  for_each                          = toset(local.cluster_node_names)
-  name                              = "${each.value}-vm"
-  location                          = azurerm_resource_group.cc_rg.location
-  resource_group_name               = azurerm_resource_group.cc_rg.name
-  network_interface_ids             = [azurerm_network_interface.cces_nic[each.value].id]
-  size                              = var.azure_cces_vm_size
-  admin_username                    = "azureuser"
+  for_each              = toset(local.cluster_node_names)
+  name                  = "${each.value}-vm"
+  location              = azurerm_resource_group.cc_rg.location
+  resource_group_name   = azurerm_resource_group.cc_rg.name
+  network_interface_ids = [azurerm_network_interface.cces_nic[each.value].id]
+  size                  = var.azure_cces_vm_size
+  admin_username        = "azureuser"
 
   admin_ssh_key {
-  username   = "azureuser"
-  public_key = tls_private_key.cc-key.public_key_openssh
+    username   = "azureuser"
+    public_key = tls_private_key.cc-key.public_key_openssh
   }
 
   source_image_reference {
-  publisher = "rubrik-inc"
-  offer     = "rubrik-data-protection"
-  sku       = var.azure_cces_sku
-  version   = var.azure_cces_version
+    publisher = "rubrik-inc"
+    offer     = "rubrik-data-protection"
+    sku       = var.azure_cces_sku
+    version   = var.azure_cces_version
   }
 
   os_disk {
-  caching              = "ReadWrite"
-  storage_account_type = "Premium_LRS"
+    caching              = "ReadWrite"
+    storage_account_type = "Premium_LRS"
   }
 
   plan {
-  name            = var.azure_cces_plan_name
-  publisher       = "rubrik-inc"
-  product         = "rubrik-data-protection"
+    name      = var.azure_cces_plan_name
+    publisher = "rubrik-inc"
+    product   = "rubrik-data-protection"
   }
 
   tags = var.azure_tags
@@ -219,7 +217,7 @@ resource "azurerm_linux_virtual_machine" "cces_node" {
 
 resource "azurerm_management_lock" "cces_node" {
   for_each   = var.azure_resource_lock == true ? toset(local.cluster_node_names) : []
-  name        = "${each.value}-vm"
+  name       = "${each.value}-vm"
   scope      = azurerm_linux_virtual_machine.cces_node[each.value].id
   lock_level = "CanNotDelete"
   notes      = "Locked because this is a critical resource."

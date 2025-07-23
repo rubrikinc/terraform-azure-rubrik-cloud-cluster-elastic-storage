@@ -12,8 +12,8 @@ variable "azure_resource_group" {
 
 variable "azure_resource_lock" {
   description = "Enable the Azure Resource Lock on critical components that are created by this module."
-  type = bool
-  default = true
+  type        = bool
+  default     = true
 }
 
 variable "azure_subscription_id" {
@@ -85,6 +85,7 @@ variable "number_of_nodes" {
 }
 
 # Networking
+
 variable "azure_subnet_name" {
   description = "Name of the Azure subnet to deploy Rubrik Cloud Cluster into. This subnet must be in the VNet that is defined in the 'azure_vnet_name' variable."
   type        = string
