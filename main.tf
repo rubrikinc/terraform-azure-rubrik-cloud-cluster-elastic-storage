@@ -74,11 +74,11 @@ resource "azapi_resource" "cc_container" {
   }
 }
 
-# Note. this azapi_resource can be replaced with the "service_endpoints = ["Microsoft.Storage"]" 
+# Note. this azapi_resource can be replaced with the "service_endpoints = ["Microsoft.Storage"]"
 # option on the azurerm_subnet resource if the subnet is also created by Terraform.
 
 resource "azapi_update_resource" "cces_subnet_storage_endpoint" {
-
+  count       = var.azure_enable_subnet_storage_endpoint ? 1 : 0
   type        = "Microsoft.Network/virtualNetworks/subnets@2023-02-01"
   resource_id = data.azurerm_subnet.cces_subnet.id
 
