@@ -1,6 +1,6 @@
 locals {
   key_vault_secret_elements = split("/", azurerm_key_vault_secret.cc_private_ssh_key.id)
-  key_vault_elements = split("/", azurerm_key_vault.cc_key_vault.id)
+  key_vault_elements        = split("/", azurerm_key_vault.cc_key_vault.id)
 }
 
 output "rubrik_cloud_cluster_ip_addresses" {
