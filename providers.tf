@@ -6,12 +6,12 @@ terraform {
       version = "~>4.14.0"
     }
     azapi = {
-      source = "Azure/azapi"
+      source  = "Azure/azapi"
       version = ">=2.0.0"
     }
     polaris = {
       source  = "rubrikinc/polaris"
-      version = "~>1.1.1"
+      version = "=>1.1.3"
     }
   }
 }
