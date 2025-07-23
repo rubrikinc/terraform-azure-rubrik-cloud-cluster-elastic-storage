@@ -1,124 +1,104 @@
 # Terraform Module - Azure Cloud Cluster Elastic Storage Deployment
+This module deploys a new Rubrik Cloud Cluster Elastic Storage (CCES) in Azure.
 
-Terraform module which deploys a new Rubrik Cloud Cluster Elastic Storage (CCES) in Azure.
-
-## Documentation
-
-Here are some resources to get you started! If you find any challenges from this project are not properly documented or are unclear, please [raise an issue](../../issues/new/choose) and let us know! This is a fun, safe environment - don't worry if you're a GitHub newbie!
-
-- [Microsoft Azure CLI Overview](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
-- [Microsoft Azure CLI Installation](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
-- [Microsoft Azure CLI Authentication](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli)
-- [Terraform Module Registry](https://registry.terraform.io/modules/rubrikinc/rubrik-azure-cloud-cluster-elastic-storage)
-- [Terraform Module for AzureRM CLI Authentication](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/azure_cli)
-
-## Prerequisites
-
-There are a few services you'll need in order to get this project off the ground:
-
-- [Terraform](https://www.terraform.io/downloads.html) v1.5.1 or greater
-- [Rubrik RSC Provider for Terraform](https://github.com/rubrikinc/terraform-provider-polaris) - provides Terraform functions for Rubrik
-  - Only required to use the `polaris_cdm_bootstrap_cces_azure` resource.
-- [Install the Azure CLI tools](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) - Needed for Terraform to authenticate with Azure
-
-### Usage
-
+## Usage
 ```hcl
-provider "azurerm" {
-  features {
-    key_vault {
-      purge_soft_delete_on_destroy    = true
-      recover_soft_deleted_key_vaults = true
-    }
-  }
-  subscription_id = "12345678-1234-1234-1234-123456789012"
-}
 module "rubrik_azure_cloud_cluster_elastic_storage" {
   source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
-  version = "1.0.1"
+  version = "1.0.2"
 
-  azure_location        = "West US2"
-  azure_resource_group  = "Rubrik-CCES" 
-  number_of_nodes       = 3
+  admin_email           = "build@rubrik.com"
+  admin_password        = "RubrikGoForward"
   azure_cces_plan_name  = "rubrik-cdm-90"
   azure_cces_sku        = "rubrik-cdm-90"
+  azure_location        = "West US2"
+  azure_resource_group  = "Rubrik-CCES"
+  azure_sa_name         = "rubrikcces"
   azure_subnet_name     = "private-subnet"
   azure_vnet_name       = "private-vnet"
   azure_vnet_rg_name    = "Company_VNets"
-  azure_sa_name         = "rubrikcces"
-
   cluster_name          = "rubrik-cloud-cluster"
-  admin_email           = "build@rubrik.com"
-  admin_password        = "RubrikGoForward"
+  dns_name_servers      = ["8.8.8.8", "8.8.4.4"]
   dns_search_domain     = ["rubrikdemo.com"]
-  dns_name_servers      = ["192.168.100.5","192.168.100.6"]
-  ntp_server1_name      = "8.8.8.8"
-  ntp_server2_name      = "8.8.4.4"
+  number_of_nodes       = 3
+  ntp_server1_name      = "0.north-america.pool.ntp.org"
+  ntp_server2_name      = "1.north-america.pool.ntp.org"
 }
 ```
 
 ## Changelog
 
+### v1.0.2
+* Make the Storage service endpoint of the VPC optional. The Storage endpoint is enabled by default, but it's possible
+  to not enable it by setting `azure_enable_subnet_storage_endpoint` module input variable to `false`.
+* Add support for automatically registering the Rubrik Cloud Cluster with Rubrik Security Cloud. To register the cluster
+  set the `register_cluster_with_rsc` module input variable to `true`.
+* NTP servers can now be specified using a FQDN. Previously they were required to be IP addresses, now both IP addresses
+  and FQDN are allowed.
+* Relax the version constraint for the Azure RM Terraform provider to `>=4.14.0`.
+* Bump the RSC (polaris) Terraform provider from version `~>1.1.1` to `>=1.1.3`.
+* Run `terraform fmt` on the module.
+
 ### v1.0.1
-- Deprecate `azure_subscription_id` variable in favor of provider configuration provided by the root module.
+* Deprecate the `azure_subscription_id` module input variable in favor of provider configuration provided by the root
+  module.
 
 ### v1.0.0
-- Remove hard-coded provider setup
-- Add TF-Docs
-- Fix SKU Regex
-- Bump RSC provider to 1.1.1
+* Remove hard-coded provider setup from the module.
+* Add `gen_docs.sh` script and update the Terraform documentation.
+* Fix SKU regular expression.
+* Bump RSC (polaris) Terraform provider to `1.1.1`.
 
 ### v0.2.0
-- Initial stable release of the Terraform module for deploying Rubrik Cloud Cluster Elastic Storage (CCES) in Azure
-- Support for deploying multi-node CCES clusters with configurable node count
-- Automated Azure Storage Account and container creation with optional immutability features
-- SSH key pair generation and secure storage in Azure Key Vault
-- Network interface and VM provisioning with marketplace image support
-- Automatic disk attachment for data, metadata, and cache storage (split disk support for CDM 9.2.2+)
-- Bootstrap integration using Polaris provider for automated cluster configuration
-- Comprehensive variable validation and resource locking capabilities
-- Support for custom Azure tags and resource group management
-- Initial module development and testing
-- Basic CCES deployment functionality
-- Core Azure resource provisioning
+* Initial stable release of the Terraform module for deploying Rubrik Cloud Cluster Elastic Storage (CCES) in Azure.
+* Support for deploying multi-node CCES clusters with configurable node count.
+* Automated Azure Storage Account and container creation with optional immutability features.
+* SSH key pair generation and secure storage in Azure Key Vault.
+* Network interface and VM provisioning with marketplace image support.
+* Automatic disk attachment for data, metadata, and cache storage (split disk support for CDM 9.2.2+).
+* Bootstrap integration using Polaris provider for automated cluster configuration.
+* Comprehensive variable validation and resource locking capabilities.
+* Support for custom Azure tags and resource group management.
+* Initial module development and testing.
+* Basic CCES deployment functionality.
+* Core Azure resource provisioning.
 
 ## Upgrading
+Before upgrading the module, be sure to read through the changelog to understand the changes in the new version and any
+upgrade instruction for the version you are upgrading to. 
+
+To upgrade the module to a new version, use the following steps:
+1. Update the `version` field in the `module` block to the version you want to upgrade to, e.g. `version = "1.0.3"`.
+2. Run `terraform init --upgrade` to update the modules in your configuration.
+3. Run `terraform plan` and check the output carefully to ensure that there are no unexpected changes caused by the
+   upgrade.
+4. Run `terraform apply` if there are expected changes that you want to apply.
+
+Note, as variables in the module are deprecated, you may see warnings in the output of `terraform plan`. These warnings
+can be ignored, but it's recommended that you follow the instructions in the deprecation message. Eventually deprecated
+variables will be removed.
 
 ### v1.0.0 to v1.0.1
-
-1. Update the `version` line in the `module` block to `version = "1.0.1"`
-3. Run `terraform init --upgrade` to update the module
-4. Run `terraform plan` to verify no changes in the diff:
-```log
-No changes. Your infrastructure matches the configuration.
-
-Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
-╷
-│ Warning: Check block assertion failed
-│ 
-│   on ../../terraform-azure-rubrik-cloud-cluster-elastic-storage/variables.tf line 200, in check "depercations":
-│  200:     condition     = var.azure_subscription_id == null
-│     ├────────────────
-│     │ var.azure_subscription_id is "12345678-1234-1234-1234-123456789012"
-│ 
-│ The 'azure_subscription_id' variable is deprecated and should not be used as it will be removed in a future release. Configure the subscription ID in the azurerm provider configuration instead.
-╵
+In version `v1.0.1` the `azure_subscription_id` input variable has been deprecated. If you are using the input variable,
+you will see a warning message similar to this:
+```text
+The 'azure_subscription_id' variable is deprecated and should not be used as it will be removed in a future release. Configure the subscription ID in the azurerm provider configuration instead.
 ```
-5. You are safe to remove the `azure_subscription_id` variable from the `module` configuration.
-4. Run `terraform plan` to verify no changes in the diff:
-```log
-No changes. Your infrastructure matches the configuration.
-
-Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
+Remove the variable from your module block and instead pass it to the Azure RM provider configuration block in the root
+module. Similar to this:
+```hcl
+provider "azurerm" {
+  subscription_id = "<subscription-id>"
+}
 ```
+Where `<subscription-id>` is your Azure subscription ID.
 
 ### v0.2.0 to v1.0.0
-
-1. Update the `source` line in the `module` block to `source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"`
-2. Update the `version` line in the `module` block to `version = "1.0.0"`
-3. Configure providers in your `main.tf`:
+In version `v1.0.0` the provider configuration blocks has been removed from the module to support the `for_each`
+meta-argument. Instead, the configuration blocks needs to be specified in the root module of the Terraform
+configuration. If your root module doesn't already contain a provider configuration block for the Azure RM provider,
+you can use this provider configuration block: 
 ```hcl
-# Configure the Azure Provider
 provider "azurerm" {
   features {
     key_vault {
@@ -126,75 +106,71 @@ provider "azurerm" {
       recover_soft_deleted_key_vaults = true
     }
   }
-  subscription_id = "12345678-1234-1234-1234-123456789012"
-}
 
-module "rubrik_azure_cloud_cluster_elastic_storage" {
-  source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
-  
-  <existing variables>
+  subscription_id = "<subscription-id>"
 }
-
 ```
-4. Run `terraform init --upgrade` to update the module
-5. Run `terraform plan` to verify the upgrade
-6. Run `terraform apply` to apply the upgrade
+Where `<subscription-id>` is your Azure subscription ID.
 
-### Login to Azure
+## Authenticating with Azure
+You can authenticate Terraform with Azure by either using the Azure CLI or by using environment variables.
 
-You can use the following methods to authenticate Terraform with Azure either by env variables or by using the Azure CLI.
-
-### Authenticating the Azure CLI
-
-Before running Terraform using the `azurerm_*` or `azapi_*` data sources and resources, an authentication with Azure is required. [Terraform Module for AzureRM CLI Authentication](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/azure_cli)
-provides a complete guide on how to authenticate Terraform with Azure. The following commands can be used from a command line interface with the [Microsoft Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
-to manually run Terraform:
-
-`az login --tenant <tenant_id>`
-
-Where <tenant_id> is the ID of the tenant to login to. If you only have one tenant you can remove the `--tenant` option.
+### Authenticating with Azure CLI
+[Terraform Module for AzureRM CLI Authentication](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/azure_cli)
+provides a complete guide on how to authenticate Terraform with Azure. The following commands can be used from a command
+line interface with the [Microsoft Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) to manually
+run Terraform:
+```shell
+az login --tenant <tenant-id>
+```
+Where `<tenant-id>` is the ID of the tenant to log in to. If you only have one tenant you can remove the `--tenant`
+option.
 
 Next before running this module, the subscription must be selected. Do this by running the command:
-
-`az account set --subscription <subscription_id>`
-
-Where <subscription_id> is the ID of the subscription where CCES will be deployed.
+```shell
+az account set --subscription <subscription-id>
+```
+Where `<subscription-id>` is the ID of the subscription where CCES will be deployed.
 
 ### Authenticating with Environment Variables
+For environments that require a non-interactive authentication method such as Terraform Cloud, the Azure CLI can be
+authenticated using environment variables. The following environment variables must be set:
+* `ARM_CLIENT_ID`
+* `ARM_CLIENT_SECRET`
+* `ARM_TENANT_ID`
+Additionally, you can set `ARM_SUBSCRIPTION_ID`. But if you specify the subscription ID in the root module of your
+configuration, this is not mandatory.
 
-For environments that require a non-interactive authentication method such as Terraform Cloud, the Azure CLI can be authenticated using environment variables. The following environment variables must be set:
-
-`ARM_CLIENT_ID`
-`ARM_CLIENT_SECRET`
-`ARM_TENANT_ID`
-
-Additionally you can set `ARM_SUBSCRIPTION_ID` but if you specify the subscription in your root module this is not mandatory.
-
-The env variables can be set as follows in your terminal:
-
-```bash
-export ARM_CLIENT_ID="12345678-1234-1234-1234-123456789012"
-export ARM_CLIENT_SECRET="example-secret"
-export ARM_TENANT_ID="12345678-1234-1234-1234-123456789012"
+The environment variables can be set as follows in your terminal:
+```shell
+export ARM_CLIENT_ID="<client-id>"
+export ARM_CLIENT_SECRET="<client-secret>"
+export ARM_TENANT_ID="<tenant-id>"
 ```
+Where `<client-id>` is the application ID of your application in Entra ID, `<client-secret>` is the secret of your
+application in Entra ID and `<tenant-id>` is the ID of your tenant in Azure. Alternatively, they can be added to the
+workspace variables in Terraform Cloud.
 
-Alternatively, they can be added to the workspace variables in Terraform Cloud.
-
-If you unsure how to get these, you can use the Azure CLI to create a service principal and get the values. See the [Azure CLI documentation](https://learn.microsoft.com/en-us/cli/azure/create-an-azure-service-principal-azure-cli) for more information.
+If you unsure how to get these, you can use the Azure CLI to create a service principal and get the values. See the
+[Azure CLI documentation](https://learn.microsoft.com/en-us/cli/azure/create-an-azure-service-principal-azure-cli) for
+more information.
 
 ### Accept the Azure Marketplace Agreement for CCES
+In order to deploy Cloud Cluster ES from the Azure marketplace two things must happen. First, the marketplace agreement
+for the specific plan must be accepted in the subscription where Cloud Cluster ES will be deployed. Second, valid values
+for the `azure_cces_plan_name` and `azure_cces_sku` input variables must be collected. 
 
-In order to deploy Cloud Cluster ES from the Azure marketplace two things must happen. First the marketplace agreement for the specific plan must be accepted in the subscription where
-Cloud Cluster ES will be deployed. Second the `azure_cces_plan_name` and `azure_cces_sku` variables of this module must be updated with the correct information. 
-
-One method for accepting the Marketplace Agreement is to use the Azure CLI. To do this the SKU of the Azure Marketplace Plan for CCES to use must first be identified. To do this run the command:
-
-`az vm image list-skus --location <location> -p rubrik-inc -f rubrik-data-protection --output table`
-
-Where <location> is the Azure Location code for the region where CCES will be deployed. Example:
-
+One method for accepting the Marketplace Agreement is to use the Azure CLI. To do this the SKU of the Azure Marketplace
+Plan for CCES to use must first be identified. To do this run the command:
+```shell
+az vm image list-skus --location <location> -p rubrik-inc -f rubrik-data-protection --output table`
 ```
--> az vm image list-skus --location westus2 -p rubrik-inc -f rubrik-data-protection --output table
+Where `<location>` is the Azure Location code for the region where CCES will be deployed. E.g:
+```shell
+az vm image list-skus --location westus2 -p rubrik-inc -f rubrik-data-protection --output table
+```
+Depending on the current set of SKUs available, the result should look something similar to:
+```
 Location    Name
 ----------  --------------
 westus2     rubrik-cdm-60
@@ -204,36 +180,31 @@ westus2     rubrik-cdm-81
 westus2     rubrik-cdm-90
 ```
 
-Tke SKUs in the output will represent the major and minor version numbers of the various Rubrik CCES releases. For example `rubrik-cdm-90` represents Rubrik CDM v9.0.x. The specific
-maintenance release will be selected later on. select the SKU name for the version of CCES that you plan to use.
+Tke SKUs in the output will represent the major and minor version numbers of the various Rubrik CCES releases. For
+example `rubrik-cdm-90` represents Rubrik CDM `v9.0.x`. The specific maintenance release will be selected later on.
+Select the SKU name for the version of CCES that you plan to use.
 
-Next the plan name for the SKU that has been selected must be obtained. Generally with CCES the plan name and the SKU name are the same, however, it is best to check in case they do differ.
-To do this run the command:
-
-`az vm image show --location <location> --urn rubrik-inc:rubrik-data-protection:<SKU>:latest --query plan.name --output tsv`
-
-Where <location> is the Azure Location code for the region where CCES will be deployed.
-Where <SKU> is the SKU that was selected from the previous step.
-
-Example:
-
+Next the plan name for the SKU that has been selected must be obtained. Generally with CCES the plan name and the SKU
+name are the same, however, it is best to check in case they do differ. To do this run the command:
+```shell
+az vm image show --location <location> --urn rubrik-inc:rubrik-data-protection:<SKU>:latest --query plan.name --output tsv
 ```
--> az vm image show --location westus2 --urn rubrik-inc:rubrik-data-protection:rubrik-cdm-90:latest --query plan.name --output tsv    
+Where `<location>` is the Azure Location code for the region where CCES will be deployed and `<SKU>` is the SKU that was
+selected in the previous step. E.g:
+```shell
+az vm image show --location westus2 --urn rubrik-inc:rubrik-data-protection:rubrik-cdm-90:latest --query plan.name --output tsv    
 ```
 
 Next the Azure Marketplace Agreement must be accepted. To do this run the command:
-
+```shell
+az vm image terms accept --offer rubrik-data-protection --publisher rubrik-inc --plan <plan-name> --output jsonc
 ```
-az vm image terms accept --offer rubrik-data-protection --publisher rubrik-inc --plan <plan_name> --output jsonc
-```
-
-Where <plan_name> is the name of the plan that was collected in the previous step.
-
-Example:
-
-```
+Where `<plan-name>` is the name of the plan that was collected in the previous step. E.g:
+```shell
 az vm image terms accept --offer rubrik-data-protection --publisher rubrik-inc --plan rubrik-cdm-90 --output jsonc  
-
+```
+Depending on the plan accepted, the result should look something similar to:
+```
 {
   "accepted": true,
   "id": "/subscriptions/<Subscription_ID>/providers/Microsoft.MarketplaceOrdering/offerTypes/Microsoft.MarketplaceOrdering/offertypes/publishers/rubrik-inc/offers/rubrik-data-protection/plans/rubrik-cdm-90/agreements/current",
@@ -257,102 +228,43 @@ az vm image terms accept --offer rubrik-data-protection --publisher rubrik-inc -
   "type": "Microsoft.MarketplaceOrdering/offertypes"
 }
 ```
-
 Verify that the `accepted` field is set to `true`.
 
-In the Terraform variables set the `azure_cces_plan_name` and `azure_cces_sku` variables to those that were collected in this section.
+The values for the `azure_cces_sku` and the `azure_cces_plan_name` input variables are the SKU name and plan name that
+were collected in the previous steps.
 
-### (Optional) Select the version of CCES to deploy.
+### Select the version of CCES to deploy (optional)
+By default, this module will deploy the latest version of CCES that is available in the SKU that the `azure_cces_sku`
+input variable is set to. If a specific version of CCES is desired for a given SKU, run the following command to get the
+available version numbers:
+```shell
+az vm image list --location <location> --publisher rubrik-inc --offer rubrik-data-protection --sku <SKU> --all --query sku --query "[].version" --output tsv
+```
+Where `<location>` is the Azure Location code for the region where CCES will be deployed and `<SKU>` is the SKU that was
+selected in the previous step.
 
-By default this module will deploy the latest version of CCES that is available in the SKU that the `azure_cces_sku` variable is set to. If a specific version of CCES is desired for a 
-given SKU, run the following command to get the available version numbers:
+With CDM `v8.0` and earlier the versions numbers represent the `major.minor.maintenance` number of the release. For
+example `8.0.3` represents `CDM 8.0.3-p9-22986`. There is an assumption that every maintenance release is the latest
+patch release as well. As patches are released to a maintenance release, the older patch release is removed. 
 
-`az vm image list --location <location> --publisher rubrik-inc --offer rubrik-data-protection --sku <SKU> --all --query sku --query "[].version" --output tsv`
+With CDM `v8.1` and later the version numbers represent the `minor.maintenance.build` number of the release. The SKU
+number represents the `major.minor` number of the release. For example the plan `rubrik-cdm-81` with a version number of
+`3.1.24838` represents `8.1.3-p1-24838`. This notation allows the user to understand what patch release is represented
+in the marketplace. The build numbers correspond to the various patch releases. 
 
-Where <location> is the Azure Location code for the region where CCES will be deployed.
-Where <SKU> is the SKU that was selected from the previous step.
-
-With CDM v8.0 and earlier the versions numbers represent the `major.minor.maintenance` number of the release. For example `8.0.3` represents `CDM 8.0.3-p9-22986`. There
-is an assumption that every maintenance release is the latest patch release as well. As patches are released to a maintenance release, the older patch release is removed. 
-
-With CDM v8.1 and later the version numbers represent the `minor.maintenance.build` number of the release. The SKU number represents the `major.minor` number of the release.
-For example the plan `rubrik-cdm-81` with a version number of `3.1.24838` represents `8.1.3-p1-24838`. This notation allows the user to understand what patch release is 
-represented in the marketplace. The build numbers correspond to the various patch releases. 
-
-Set the Terraform variable `azure_cces_version` to the version number from the list that is desired. Setting the `azure_cces_version` variable to `latest` will deploy the latest
-version of CCES from the list.
+Set the input variable `azure_cces_version` to the version number from the list that is desired. Setting the
+`azure_cces_version` input variable to `latest` will deploy the latest version of CCES from the list.
 
 ### Subnet Network Storage Endpoint
+This module will attempt to enable the Storage Endpoint in the subnet where CCES is deployed by default. A Storage
+Endpoint is required by CCES. If a VNet Storage Endpoint or private Storage Endpoint will be used, the default behaviour
+of the module can be disabled by setting the `azure_enable_subnet_storage_endpoint` to `false`.
 
-This module will attempt to enable the Storage Endpoint in the subnet where CCES is deployed. A Storage Endpoint is required by CCES. If a VNet Storage Endpoint or private Storage
-Endpoint will be used, disable the following lines in the `main.tf` file of this module:
-
-``` hcl
-resource "azapi_update_resource" "cces_subnet_storage_endpoint" {
-
-  type        = "Microsoft.Network/virtualNetworks/subnets@2023-02-01"
-  resource_id = data.azurerm_subnet.cces_subnet.id
-
-  body = {
-    properties = {
-      serviceEndpoints = [{
-        service = "Microsoft.Storage"
-      }]
-    }
-  }
-}
-```
-
-### Bootstrapping the Cloud Cluster
-
-The `resource "rubrik_bootstrap_cces_azure" "bootstrap_rubrik_cces_azure"` resource block will attempt to bootstrap the Cloud Cluster. To use this block properly, the system that runs this Terraform module
-must have the [Rubrik Provider for Terraform](https://github.com/rubrikinc/terraform-provider-rubrik) installed. The system running this Terraform module must also be able to contact the Cloud Cluster on
-its private IP address. If the resource for bootstrapping the Rubrik Cloud Cluster is not used, bootstrap the Rubrik Cloud Cluster as documented in the Rubrik Cloud Cluster guide, after this module has run.
-After bootstrapping, the Cloud Cluster can be configured through the Web UI.
-
-### Initialize the Directory
-
-The directory can be initialized for Terraform use by running the `terraform init` command:
-
-```none
--> terraform init
-
-Initializing the backend...
-
-Initializing provider plugins...
-- Reusing previous version of hashicorp/azurerm from the dependency lock file
-- Reusing previous version of azure/azapi from the dependency lock file
-- Reusing previous version of hashicorp/time from the dependency lock file
-- Reusing previous version of hashicorp/tls from the dependency lock file
-- Reusing previous version of rubrikinc/rubrik/rubrik from the dependency lock file
-- Using previously-installed hashicorp/azurerm v3.71.0
-- Using previously-installed azure/azapi v1.8.0
-- Using previously-installed hashicorp/time v0.9.1
-- Using previously-installed hashicorp/tls v4.0.4
-- Using previously-installed rubrikinc/rubrik/rubrik v2.2.0
-
-Terraform has been successfully initialized!
-
-You may now begin working with Terraform. Try running "terraform plan" to see
-any changes that are required for your infrastructure. All Terraform commands
-should now work.
-
-If you ever set or change modules or backend configuration for Terraform,
-rerun this command to reinitialize your working directory. If you forget, other
-commands will detect it and remind you to do so if necessary.
-```
-
-### Planning
-
-Run `terraform plan` to get information about what will happen when we apply the configuration; this will test that everything is set up correctly.
-
-### Applying
-
-We can now apply the configuration to create the cluster using the `terraform apply` command.
-
-### Destroying
-
-Once the Cloud Cluster is no longer required, it can be destroyed using the `terraform destroy` command, and entering `yes` when prompted.
+## Additional Documentation
+* [Microsoft Azure CLI Installation](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
+* [Microsoft Azure CLI Authentication](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli)
+* [Terraform Module Registry](https://registry.terraform.io/modules/rubrikinc/rubrik-azure-cloud-cluster-elastic-storage)
+* [Terraform Module for AzureRM CLI Authentication](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/azure_cli)
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -361,18 +273,18 @@ Once the Cloud Cluster is no longer required, it can be destroyed using the `ter
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.2.0 |
 | <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) | >=2.0.0 |
-| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~>4.14.0 |
-| <a name="requirement_polaris"></a> [polaris](#requirement\_polaris) | ~>1.1.1 |
+| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >=4.14.0 |
+| <a name="requirement_polaris"></a> [polaris](#requirement\_polaris) | >=1.1.3 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_azapi"></a> [azapi](#provider\_azapi) | 2.5.0 |
-| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.14.0 |
-| <a name="provider_polaris"></a> [polaris](#provider\_polaris) | 0.8.0-beta.4 |
-| <a name="provider_time"></a> [time](#provider\_time) | 0.13.1 |
-| <a name="provider_tls"></a> [tls](#provider\_tls) | 4.1.0 |
+| <a name="provider_azapi"></a> [azapi](#provider\_azapi) | >=2.0.0 |
+| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | >=4.14.0 |
+| <a name="provider_polaris"></a> [polaris](#provider\_polaris) | >=1.1.3 |
+| <a name="provider_time"></a> [time](#provider\_time) | n/a |
+| <a name="provider_tls"></a> [tls](#provider\_tls) | n/a |
 
 ## Resources
 
@@ -399,6 +311,7 @@ Once the Cloud Cluster is no longer required, it can be destroyed using the `ter
 | [azurerm_virtual_machine_data_disk_attachment.cces_data_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_data_disk_attachment) | resource |
 | [azurerm_virtual_machine_data_disk_attachment.cces_metadata_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_data_disk_attachment) | resource |
 | [polaris_cdm_bootstrap_cces_azure.bootstrap_cces_azure](https://registry.terraform.io/providers/rubrikinc/polaris/latest/docs/resources/cdm_bootstrap_cces_azure) | resource |
+| [polaris_cdm_registration.cces_azure_registration](https://registry.terraform.io/providers/rubrikinc/polaris/latest/docs/resources/cdm_registration) | resource |
 | [time_sleep.wait_for_nodes_to_boot](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/sleep) | resource |
 | [tls_private_key.cc-key](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
 | [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
@@ -415,6 +328,7 @@ Once the Cloud Cluster is no longer required, it can be destroyed using the `ter
 | <a name="input_azure_cces_sku"></a> [azure\_cces\_sku](#input\_azure\_cces\_sku) | The SKU for the Azure Marketplace Image of CCES to deploy. See the README.MD file of this module for information on finding the SKU. | `string` | n/a | yes |
 | <a name="input_azure_cces_version"></a> [azure\_cces\_version](#input\_azure\_cces\_version) | The version of CCES to deploy. Use 'latest' to deploy the latest available version. Note: This only applies to the version within a SKU (major/minor version). | `string` | `"latest"` | no |
 | <a name="input_azure_cces_vm_size"></a> [azure\_cces\_vm\_size](#input\_azure\_cces\_vm\_size) | The Azure VM Machine Type to use for the Cloud Cluster nodes. | `string` | `"Standard_D16s_v5"` | no |
+| <a name="input_azure_enable_subnet_storage_endpoint"></a> [azure\_enable\_subnet\_storage\_endpoint](#input\_azure\_enable\_subnet\_storage\_endpoint) | Whether to enable the Storage service endpoint on the VPC subnet. Defaults to `true`. | `bool` | `true` | no |
 | <a name="input_azure_key_vault_name"></a> [azure\_key\_vault\_name](#input\_azure\_key\_vault\_name) | The name of the Azure Key Vault to create, into which the CCES private ssh key will be stored. | `string` | `""` | no |
 | <a name="input_azure_location"></a> [azure\_location](#input\_azure\_location) | The region to deploy Rubrik Cloud Cluster resources. | `any` | n/a | yes |
 | <a name="input_azure_resource_group"></a> [azure\_resource\_group](#input\_azure\_resource\_group) | The Azure Resource Group into which deploy Rubrik Cloud Cluster resources. | `string` | `"RubrikCloudCluster"` | no |
@@ -422,7 +336,7 @@ Once the Cloud Cluster is no longer required, it can be destroyed using the `ter
 | <a name="input_azure_sa_name"></a> [azure\_sa\_name](#input\_azure\_sa\_name) | The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources. | `string` | n/a | yes |
 | <a name="input_azure_sa_replication_type"></a> [azure\_sa\_replication\_type](#input\_azure\_sa\_replication\_type) | The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster. | `string` | `"LRS"` | no |
 | <a name="input_azure_subnet_name"></a> [azure\_subnet\_name](#input\_azure\_subnet\_name) | Name of the Azure subnet to deploy Rubrik Cloud Cluster into. This subnet must be in the VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
-| <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. DEPRECATED: This variable is no longer required as the subscription ID is now determined by the provider configuration. | `string` | `null` | no |
+| <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. Deprecated: This variable is no longer required as the subscription ID is now determined by the provider configuration. | `string` | `null` | no |
 | <a name="input_azure_tags"></a> [azure\_tags](#input\_azure\_tags) | Tags to add to the Azure resources that this Terraform script creates, including the Rubrik cluster nodes. | `map(string)` | `{}` | no |
 | <a name="input_azure_vnet_name"></a> [azure\_vnet\_name](#input\_azure\_vnet\_name) | Name of the Azure Virtual Network (VNet) to deploy Rubrik Cloud Cluster ES into. | `string` | n/a | yes |
 | <a name="input_azure_vnet_rg_name"></a> [azure\_vnet\_rg\_name](#input\_azure\_vnet\_rg\_name) | Name of the Resource Group of the Azure VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
@@ -439,6 +353,7 @@ Once the Cloud Cluster is no longer required, it can be destroyed using the `ter
 | <a name="input_ntp_server2_key_type"></a> [ntp\_server2\_key\_type](#input\_ntp\_server2\_key\_type) | Symmetric key type for NTP server #2. | `string` | `""` | no |
 | <a name="input_ntp_server2_name"></a> [ntp\_server2\_name](#input\_ntp\_server2\_name) | The FQDN or IPv4 addresses of network time protocol (NTP) server #2. | `string` | `"8.8.4.4"` | no |
 | <a name="input_number_of_nodes"></a> [number\_of\_nodes](#input\_number\_of\_nodes) | The total number of nodes in Rubrik Cloud Cluster. | `number` | `3` | no |
+| <a name="input_register_cluster_with_rsc"></a> [register\_cluster\_with\_rsc](#input\_register\_cluster\_with\_rsc) | Register the Rubrik Cloud Cluster with Rubrik Security Cloud. | `bool` | `false` | no |
 | <a name="input_timeout"></a> [timeout](#input\_timeout) | The number of seconds to wait to establish a connection the Rubrik cluster before returning a timeout error. | `string` | `"4m"` | no |
 
 ## Outputs

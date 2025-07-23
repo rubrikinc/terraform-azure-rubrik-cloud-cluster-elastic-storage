@@ -216,7 +216,7 @@ variable "timeout" {
   default     = "4m"
 }
 
-check "depercations" {
+check "deprecations" {
   assert {
     condition     = var.azure_subscription_id == null
     error_message = "The 'azure_subscription_id' variable is deprecated and should not be used as it will be removed in a future release. Configure the subscription ID in the azurerm provider configuration instead."
