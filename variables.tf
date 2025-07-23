@@ -102,6 +102,12 @@ variable "azure_vnet_rg_name" {
 
 # Storage Variables
 
+variable "azure_enable_subnet_storage_endpoint" {
+  description = "Whether to enable the Storage service endpoint on the VPC subnet. Defaults to `true`."
+  type        = bool
+  default     = true
+}
+
 variable "azure_sa_name" {
   description = "The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources."
   type        = string
