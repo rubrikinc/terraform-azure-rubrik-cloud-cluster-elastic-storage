@@ -1,5 +1,8 @@
 ## Changelog
 
+### v1.0.3
+* Ignore changes to identities attached to the VM outside of this module, allowing plans to run without removing them.
+
 ### v1.0.2
 * Make the Storage service endpoint of the VPC optional. The Storage endpoint is enabled by default, but it's possible
   to not enable it by setting `azure_enable_subnet_storage_endpoint` module input variable to `false`.

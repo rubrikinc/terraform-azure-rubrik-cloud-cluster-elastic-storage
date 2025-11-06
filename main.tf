@@ -211,6 +211,12 @@ resource "azurerm_linux_virtual_machine" "cces_node" {
     product   = "rubrik-data-protection"
   }
 
+  lifecycle {
+    ignore_changes = [
+      identity
+    ]
+  }
+
   tags = var.azure_tags
 
 }
