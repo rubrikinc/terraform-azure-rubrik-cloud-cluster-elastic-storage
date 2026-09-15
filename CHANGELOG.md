@@ -1,5 +1,9 @@
 ## Changelog
 
+### v1.0.3
+* Constrain the Azure RM Terraform provider to `>=4.14.0` and `<5.0.0`. The module is not yet compatible with
+  version 5 of the Azure RM provider.
+
 ### v1.0.2
 * Make the Storage service endpoint of the VPC optional. The Storage endpoint is enabled by default, but it's possible
   to not enable it by setting `azure_enable_subnet_storage_endpoint` module input variable to `false`.

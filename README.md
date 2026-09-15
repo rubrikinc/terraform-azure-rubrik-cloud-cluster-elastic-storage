@@ -5,7 +5,7 @@ This module deploys a new Rubrik Cloud Cluster Elastic Storage (CCES) in Azure.
 ```hcl
 module "rubrik_azure_cloud_cluster_elastic_storage" {
   source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
-  version = "1.0.2"
+  version = "1.0.3"
 
   admin_email           = "build@rubrik.com"
   admin_password        = "RubrikGoForward"
@@ -27,6 +27,10 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 ```
 
 ## Changelog
+
+### v1.0.3
+* Constrain the Azure RM Terraform provider to `>=4.14.0` and `<5.0.0`. The module is not yet compatible with
+  version 5 of the Azure RM provider.
 
 ### v1.0.2
 * Make the Storage service endpoint of the VPC optional. The Storage endpoint is enabled by default, but it's possible
