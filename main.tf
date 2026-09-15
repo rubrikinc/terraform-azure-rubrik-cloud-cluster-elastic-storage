@@ -166,7 +166,6 @@ resource "azurerm_network_interface" "cces_nic" {
   }
 
   tags = var.azure_tags
-
 }
 
 resource "azurerm_management_lock" "cces_nic" {
@@ -201,7 +200,7 @@ resource "azurerm_linux_virtual_machine" "cces_node" {
   }
 
   os_disk {
-    caching              = "ReadWrite"
+    caching              = local.os_disk_caching
     storage_account_type = "Premium_LRS"
   }
 
@@ -212,7 +211,6 @@ resource "azurerm_linux_virtual_machine" "cces_node" {
   }
 
   tags = var.azure_tags
-
 }
 
 resource "azurerm_management_lock" "cces_node" {
@@ -221,6 +219,18 @@ resource "azurerm_management_lock" "cces_node" {
   scope      = azurerm_linux_virtual_machine.cces_node[each.value].id
   lock_level = "CanNotDelete"
   notes      = "Locked because this is a critical resource."
+}
+
+# Give Azure time to finish committing the virtual machine before attaching
+# disks to it. Attaching a disk updates the virtual machine, and an update that
+# overlaps the commit fails with a conflicting concurrent write.
+
+resource "time_sleep" "wait_for_nodes_to_provision" {
+  create_duration = "30s"
+
+  depends_on = [
+    azurerm_linux_virtual_machine.cces_node,
+  ]
 }
 
 resource "azurerm_managed_disk" "cces_data_disk" {
@@ -248,6 +258,10 @@ resource "azurerm_virtual_machine_data_disk_attachment" "cces_data_disk" {
   virtual_machine_id = azurerm_linux_virtual_machine.cces_node[each.value].id
   lun                = "0"
   caching            = "ReadWrite"
+
+  depends_on = [
+    time_sleep.wait_for_nodes_to_provision,
+  ]
 }
 
 # Create 2 additional disks, one for metadata and for cache, per cluster node
@@ -277,7 +291,11 @@ resource "azurerm_virtual_machine_data_disk_attachment" "cces_metadata_disk" {
   managed_disk_id    = azurerm_managed_disk.cces_metadata_disk[each.value].id
   virtual_machine_id = azurerm_linux_virtual_machine.cces_node[each.value].id
   lun                = "1"
-  caching            = "ReadWrite"
+  caching            = var.azure_metadata_disk_caching
+
+  depends_on = [
+    azurerm_virtual_machine_data_disk_attachment.cces_data_disk,
+  ]
 }
 
 resource "azurerm_managed_disk" "cces_cache_disk" {
@@ -305,6 +323,10 @@ resource "azurerm_virtual_machine_data_disk_attachment" "cces_cache_disk" {
   virtual_machine_id = azurerm_linux_virtual_machine.cces_node[each.value].id
   lun                = "2"
   caching            = "ReadWrite"
+
+  depends_on = [
+    azurerm_virtual_machine_data_disk_attachment.cces_metadata_disk,
+  ]
 }
 
 ######################################

@@ -5,7 +5,7 @@ This module deploys a new Rubrik Cloud Cluster Elastic Storage (CCES) in Azure.
 ```hcl
 module "rubrik_azure_cloud_cluster_elastic_storage" {
   source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
-  version = "1.0.3"
+  version = "1.1.0"
 
   admin_email           = "build@rubrik.com"
   admin_password        = "RubrikGoForward"
@@ -27,6 +27,25 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 ```
 
 ## Changelog
+
+### v1.1.0
+* Change the host caching mode of the Rubrik Cloud Cluster metadata disk from `ReadWrite` to `None`. CDM 9.3.3 and later
+  require this. With `ReadWrite` the bootstrap of a new cluster fails, and on a running cluster the daily configuration
+  health check fails.
+* Change the host caching mode of the Rubrik Cloud Cluster OS disk from `ReadWrite` to `None` on CDM 9.2.2 and later,
+  following the Rubrik host caching recommendation. Deployments of earlier CDM versions keep `ReadWrite` and are left
+  unchanged.
+* The data disk and the cache disk are unchanged and keep `ReadWrite`. CDM before 9.3.3 requires `ReadWrite` on
+  the data disk.
+* Attach the data, metadata and cache disks to a cluster node one at a time, and wait for the nodes to be created before
+  attaching the first disk. Attaching a disk updates the virtual machine, and two updates that overlap fail with a
+  conflicting concurrent write error from Azure.
+* Add the `azure_os_disk_caching` and `azure_metadata_disk_caching` module input variables, which override the host
+  caching mode of the OS disk and the metadata disk.
+
+This is released as a minor version, and not as a patch version, so that existing deployments using a `~> 1.0.0` version
+constraint are not upgraded automatically. Applying the new host caching mode to an existing cluster is disruptive. See
+the upgrade instructions below before upgrading.
 
 ### v1.0.3
 * Constrain the Azure RM Terraform provider to `>=4.14.0` and `<5.0.0`. The module is not yet compatible with
@@ -72,7 +91,7 @@ Before upgrading the module, be sure to read through the changelog to understand
 upgrade instruction for the version you are upgrading to. 
 
 To upgrade the module to a new version, use the following steps:
-1. Update the `version` field in the `module` block to the version you want to upgrade to, e.g. `version = "1.0.3"`.
+1. Update the `version` field in the `module` block to the version you want to upgrade to, e.g. `version = "1.1.0"`.
 2. Run `terraform init --upgrade` to update the modules in your configuration.
 3. Run `terraform plan` and check the output carefully to ensure that there are no unexpected changes caused by the
    upgrade.
@@ -81,6 +100,47 @@ To upgrade the module to a new version, use the following steps:
 Note, as variables in the module are deprecated, you may see warnings in the output of `terraform plan`. These warnings
 can be ignored, but it's recommended that you follow the instructions in the deprecation message. Eventually deprecated
 variables will be removed.
+
+### v1.0.2 to v1.1.0
+In version `v1.1.0` the host caching mode of the Rubrik Cloud Cluster metadata disk changed from `ReadWrite` to
+`None`, because CDM 9.3.3 and later require it. With `ReadWrite` the bootstrap of a new cluster fails and the daily
+configuration health check fails on a running cluster. The host caching mode of the OS disk also changed to `None`,
+but only on CDM 9.2.2 and later, following the Rubrik host caching recommendation. The data disk and the cache disk
+are unchanged and keep `ReadWrite`, which is what CDM before 9.3.3 requires of the data disk.
+
+The metadata disk only exists on CDM 9.2.2 and later, and the OS disk keeps `ReadWrite` on earlier versions, so the
+disks of a deployment of a CDM version before 9.2.2 are left untouched.
+
+Every upgrade adds one resource to the plan, whichever CDM version is deployed:
+```text
+# module.<module-name>.time_sleep.wait_for_nodes_to_provision will be created
+```
+It delays the first disk attachment while the cluster nodes are being created, to avoid a race in Azure that fails
+the attachment with a conflicting concurrent write. It has no effect on nodes that already exist, so applying it
+changes nothing about a running cluster.
+
+No resources are destroyed or recreated by this change, the virtual machines and the disk attachments are updated in
+place. A deployment of CDM 9.2.2 or later sees two in-place updates per cluster node, one for the OS disk and one for
+the metadata disk. Applying it to a running cluster is still disruptive. The
+[Azure documentation](https://learn.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching)
+states:
+
+> Changing the cache setting of an Azure disk detaches and reattaches the target disk. If it's the operating system
+> disk, the VM is restarted. Stop all applications and services that might be affected by this disruption before you
+> change the disk cache setting. Not following those recommendations could lead to data corruption.
+
+In other words, the OS disk change restarts the node and the metadata disk change detaches and reattaches that disk.
+Apply the change during a maintenance window and upgrade one node at a time. A deployment of a CDM version before
+9.2.2 has neither change and can be upgraded without disruption.
+
+If you are not ready for the disruption, either change can be deferred by setting its input variable back to
+`ReadWrite`. Use `azure_os_disk_caching` to defer the node restart and `azure_metadata_disk_caching` to defer
+detaching and reattaching the metadata disk.
+
+This change is released as a minor version so that existing deployments are not upgraded automatically. Deployments
+using `version = "1.0.2"` or `version = "~> 1.0.0"` will not pick up `v1.1.0`. Deployments using a wider version
+constraint, such as `version = "~> 1.0"` or `version = ">= 1.0"`, will pick it up on the next
+`terraform init --upgrade`. Pin the version before upgrading if you are not ready for the change.
 
 ### v1.0.0 to v1.0.1
 In version `v1.0.1` the `azure_subscription_id` input variable has been deprecated. If you are using the input variable,
@@ -167,7 +227,7 @@ for the `azure_cces_plan_name` and `azure_cces_sku` input variables must be coll
 One method for accepting the Marketplace Agreement is to use the Azure CLI. To do this the SKU of the Azure Marketplace
 Plan for CCES to use must first be identified. To do this run the command:
 ```shell
-az vm image list-skus --location <location> -p rubrik-inc -f rubrik-data-protection --output table`
+az vm image list-skus --location <location> -p rubrik-inc -f rubrik-data-protection --output table
 ```
 Where `<location>` is the Azure Location code for the region where CCES will be deployed. E.g:
 ```shell
@@ -264,6 +324,31 @@ This module will attempt to enable the Storage Endpoint in the subnet where CCES
 Endpoint is required by CCES. If a VNet Storage Endpoint or private Storage Endpoint will be used, the default behaviour
 of the module can be disabled by setting the `azure_enable_subnet_storage_endpoint` to `false`.
 
+### Accelerated Networking and the Azure Network Adapter
+CCES requires Azure Accelerated Networking, which this module enables on the network interface of each cluster
+node. CDM releases before `9.5.1` detect it by looking for a Mellanox device inside the guest. Azure has started
+replacing Mellanox with the Microsoft Azure Network Adapter (MANA), which those releases don't recognise, so the
+bootstrap of a new cluster fails with the message:
+```text
+Azure Accelerated Networking is not enabled on this node.
+```
+This happens even though Accelerated Networking is enabled on the network interface. Azure started placing the VM
+sizes used by this module on MANA capable hardware on 2026-05-26, and which hardware a node lands on can't be
+requested.
+
+Deploying CDM `9.5.1` or later avoids the problem. To deploy an earlier release, the `LegacyVMNVA` tag keeps the
+nodes off MANA capable hardware:
+```hcl
+azure_tags = {
+  LegacyVMNVA = "true"
+}
+```
+The tag has to be set when the cluster nodes are created, and Azure honours it until 2027-05-31. It also restricts
+the nodes to a smaller pool of hardware, which makes allocation failures more likely. Note that the module applies
+the `azure_tags` input variable to all the resources it creates, not only to the cluster nodes. See
+[MANA support for Network Virtual Appliances](https://learn.microsoft.com/en-us/azure/virtual-network/accelerated-networking-mana-network-virtual-appliance-opt-out)
+for details.
+
 ## Additional Documentation
 * [Microsoft Azure CLI Installation](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 * [Microsoft Azure CLI Authentication](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli)
@@ -274,18 +359,18 @@ of the module can be disabled by setting the `azure_enable_subnet_storage_endpoi
 ## Requirements
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.2.0 |
 | <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) | >=2.0.0 |
-| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >=4.14.0 |
+| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >=4.14.0, <5.0.0 |
 | <a name="requirement_polaris"></a> [polaris](#requirement\_polaris) | >=1.1.3 |
 
 ## Providers
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="provider_azapi"></a> [azapi](#provider\_azapi) | >=2.0.0 |
-| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | >=4.14.0 |
+| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | >=4.14.0, <5.0.0 |
 | <a name="provider_polaris"></a> [polaris](#provider\_polaris) | >=1.1.3 |
 | <a name="provider_time"></a> [time](#provider\_time) | n/a |
 | <a name="provider_tls"></a> [tls](#provider\_tls) | n/a |
@@ -293,7 +378,7 @@ of the module can be disabled by setting the `azure_enable_subnet_storage_endpoi
 ## Resources
 
 | Name | Type |
-|------|------|
+| ---- | ---- |
 | [azapi_resource.cc_container](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) | resource |
 | [azapi_update_resource.cces_subnet_storage_endpoint](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/update_resource) | resource |
 | [azurerm_key_vault.cc_key_vault](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault) | resource |
@@ -325,7 +410,7 @@ of the module can be disabled by setting the `azure_enable_subnet_storage_endpoi
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_admin_email"></a> [admin\_email](#input\_admin\_email) | The Rubrik Cloud Cluster sends messages for the admin account to this email address. | `string` | n/a | yes |
 | <a name="input_admin_password"></a> [admin\_password](#input\_admin\_password) | Password for the Rubrik Cloud Cluster admin account. | `string` | `"ChangeMe"` | no |
 | <a name="input_azure_cces_plan_name"></a> [azure\_cces\_plan\_name](#input\_azure\_cces\_plan\_name) | The Azure Marketplace Plan Name/ID of the CCES image to deploy. See the README.MD file of this module for information on finding the plan name. | `any` | n/a | yes |
@@ -335,6 +420,8 @@ of the module can be disabled by setting the `azure_enable_subnet_storage_endpoi
 | <a name="input_azure_enable_subnet_storage_endpoint"></a> [azure\_enable\_subnet\_storage\_endpoint](#input\_azure\_enable\_subnet\_storage\_endpoint) | Whether to enable the Storage service endpoint on the VPC subnet. Defaults to `true`. | `bool` | `true` | no |
 | <a name="input_azure_key_vault_name"></a> [azure\_key\_vault\_name](#input\_azure\_key\_vault\_name) | The name of the Azure Key Vault to create, into which the CCES private ssh key will be stored. | `string` | `""` | no |
 | <a name="input_azure_location"></a> [azure\_location](#input\_azure\_location) | The region to deploy Rubrik Cloud Cluster resources. | `any` | n/a | yes |
+| <a name="input_azure_metadata_disk_caching"></a> [azure\_metadata\_disk\_caching](#input\_azure\_metadata\_disk\_caching) | Host caching mode for the Rubrik Cloud Cluster metadata disk. CDM 9.3.3 and later require 'None'. The metadata disk exists on CDM 9.2.2 and later. Changing this on a running cluster detaches and reattaches the disk, so apply it during a maintenance window. | `string` | `"None"` | no |
+| <a name="input_azure_os_disk_caching"></a> [azure\_os\_disk\_caching](#input\_azure\_os\_disk\_caching) | Host caching mode for the Rubrik Cloud Cluster OS disk. Can be 'None', 'ReadOnly' or 'ReadWrite'. When not set, it defaults to 'None' on CDM 9.2.2 and later, following the Rubrik host caching recommendation, and to 'ReadWrite' on earlier versions, which leaves those deployments unchanged. Changing this on a running cluster restarts the nodes, so on an upgrade either apply it during a maintenance window or set it to 'ReadWrite' to keep the current behaviour. | `string` | `null` | no |
 | <a name="input_azure_resource_group"></a> [azure\_resource\_group](#input\_azure\_resource\_group) | The Azure Resource Group into which deploy Rubrik Cloud Cluster resources. | `string` | `"RubrikCloudCluster"` | no |
 | <a name="input_azure_resource_lock"></a> [azure\_resource\_lock](#input\_azure\_resource\_lock) | Enable the Azure Resource Lock on critical components that are created by this module. | `bool` | `true` | no |
 | <a name="input_azure_sa_name"></a> [azure\_sa\_name](#input\_azure\_sa\_name) | The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources. | `string` | n/a | yes |
@@ -363,7 +450,7 @@ of the module can be disabled by setting the `azure_enable_subnet_storage_endpoi
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ---- | ----------- |
 | <a name="output_key_vault_get_ssh_key_command"></a> [key\_vault\_get\_ssh\_key\_command](#output\_key\_vault\_get\_ssh\_key\_command) | n/a |
 | <a name="output_rubrik_cloud_cluster_ip_addresses"></a> [rubrik\_cloud\_cluster\_ip\_addresses](#output\_rubrik\_cloud\_cluster\_ip\_addresses) | n/a |
 <!-- END_TF_DOCS -->

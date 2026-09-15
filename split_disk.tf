@@ -13,4 +13,9 @@ locals {
   # Determine if the split disk feature is enabled based on the major, minor and
   # maintenance version numbers.
   split_disk = local.major_minor_version > 92 || (local.major_minor_version == 92 && (var.azure_cces_version == "latest" || local.maint_version >= 2)) ? true : false
+
+  # Versions with the split disk feature follow the Rubrik host caching
+  # recommendation of None for the OS disk. Earlier versions keep ReadWrite, so
+  # that upgrading the module doesn't restart the nodes of those deployments.
+  os_disk_caching = var.azure_os_disk_caching != null ? var.azure_os_disk_caching : (local.split_disk ? "None" : "ReadWrite")
 }
