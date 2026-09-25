@@ -1,5 +1,24 @@
 ## Changelog
 
+### v1.1.0
+* Change the host caching mode of the Rubrik Cloud Cluster metadata disk from `ReadWrite` to `None`. CDM 9.3.3 and later
+  require this. With `ReadWrite` the bootstrap of a new cluster fails, and on a running cluster the daily configuration
+  health check fails.
+* Change the host caching mode of the Rubrik Cloud Cluster OS disk from `ReadWrite` to `None` on CDM 9.2.2 and later,
+  following the Rubrik host caching recommendation. Deployments of earlier CDM versions keep `ReadWrite` and are left
+  unchanged.
+* The data disk and the cache disk are unchanged and keep `ReadWrite`. CDM before 9.3.3 requires `ReadWrite` on the data
+  disk.
+* Attach the data, metadata and cache disks to a cluster node one at a time, and wait for the nodes to be created before
+  attaching the first disk. Attaching a disk updates the virtual machine, and two updates that overlap fail with a
+  conflicting concurrent write error from Azure.
+* Add the `azure_os_disk_caching` and `azure_metadata_disk_caching` module input variables, which override the host
+  caching mode of the OS disk and the metadata disk.
+
+This is released as a minor version, and not as a patch version, so that existing deployments using a `~> 1.0.0` version
+constraint are not upgraded automatically. Applying the new host caching mode to an existing cluster is disruptive. See
+the upgrade instructions in the README before upgrading.
+
 ### v1.0.3
 * Constrain the Azure RM Terraform provider to `>=4.14.0` and `<5.0.0`. The module is not yet compatible with
   version 5 of the Azure RM provider.

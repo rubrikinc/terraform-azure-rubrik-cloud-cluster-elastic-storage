@@ -109,6 +109,28 @@ variable "azure_enable_subnet_storage_endpoint" {
   default     = true
 }
 
+variable "azure_metadata_disk_caching" {
+  description = "Host caching mode for the Rubrik Cloud Cluster metadata disk. CDM 9.3.3 and later require 'None'. The metadata disk exists on CDM 9.2.2 and later. Changing this on a running cluster detaches and reattaches the disk, so apply it during a maintenance window."
+  type        = string
+  default     = "None"
+
+  validation {
+    condition     = contains(["None", "ReadOnly", "ReadWrite"], var.azure_metadata_disk_caching)
+    error_message = "The host caching mode must be one of 'None', 'ReadOnly' or 'ReadWrite'."
+  }
+}
+
+variable "azure_os_disk_caching" {
+  description = "Host caching mode for the Rubrik Cloud Cluster OS disk. Can be 'None', 'ReadOnly' or 'ReadWrite'. When not set, it defaults to 'None' on CDM 9.2.2 and later, following the Rubrik host caching recommendation, and to 'ReadWrite' on earlier versions, which leaves those deployments unchanged. Changing this on a running cluster restarts the nodes, so on an upgrade either apply it during a maintenance window or set it to 'ReadWrite' to keep the current behaviour."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.azure_os_disk_caching == null ? true : contains(["None", "ReadOnly", "ReadWrite"], var.azure_os_disk_caching)
+    error_message = "The host caching mode must be one of 'None', 'ReadOnly' or 'ReadWrite'."
+  }
+}
+
 variable "azure_sa_name" {
   description = "The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources."
   type        = string
