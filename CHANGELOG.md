@@ -1,5 +1,51 @@
 ## Changelog
 
+### v2.0.0
+* Address the findings that Azure security scanners raise against the module. Settings that can disrupt a running
+  cluster are opt-in input variables that default to the current behavior, so upgrading the module doesn't change how
+  an existing cluster runs unless the variables are set. See the upgrade instructions in the README before upgrading.
+* Add the `azure_sa_restrict_network_access` input variable, which sets the default action of the Storage Account
+  network rules to `Deny` and only allows the CCES subnet and trusted Azure services. Hosts outside the CCES subnet
+  can be allowed with the new `azure_sa_allowed_ip_ranges` input variable.
+* Add support for encrypting the Storage Account and the disks, including the OS disks, with customer-managed keys.
+  Set `azure_sa_cmk_key_vault_key_id` and `azure_disk_cmk_key_vault_key_id` to the IDs of Key Vault keys, together
+  with `azure_cmk_user_assigned_identity_id`. The module creates a disk encryption set which double encrypts the disks
+  with both a platform-managed key and the customer-managed key. The Key Vault and the keys are not created by the
+  module.
+* Add the `azure_enable_encryption_at_host`, `azure_enable_boot_diagnostics` and `azure_allow_extension_operations`
+  input variables for the nodes. Encryption at host requires the `Microsoft.Compute/EncryptionAtHost` feature to be
+  registered on the Azure subscription.
+* Add the `azure_sa_logs_log_analytics_workspace_id`, `azure_sa_logs_storage_account_id`,
+  `azure_sa_logs_eventhub_authorization_rule_id` and `azure_sa_logs_eventhub_name` input variables, which send the
+  read, write and delete logs of the Storage Account to a destination provided by the user. Do not send the logs to
+  the CCES Storage Account.
+* Add the `azure_sa_container_soft_delete_days` and `azure_sa_sas_expiration_period` input variables.
+* Apply these settings to all deployments. They are updated in place and don't affect CCES:
+  * Storage Account: disallow public access to containers, make Entra ID the default authentication in the Azure
+    portal, disable local users, enable container soft delete for 7 days, set a SAS expiration policy that only logs,
+    require SMB 3.1.1 and explicitly allow trusted Azure services. This disables soft delete for file shares, which is
+    enabled by default for new Storage Accounts, and which Rubrik requires to be disabled.
+  * Managed disks: set the network access policy to `DenyAll` and disable public network access. This only affects
+    exporting a disk through a SAS URL.
+* The network rules of the Storage Account are now managed by the new `azurerm_storage_account_network_rules`
+  resource. It is added to the plan of an existing deployment, and changes nothing unless
+  `azure_sa_restrict_network_access` is set.
+* The following findings are not addressed, since CCES doesn't support the setting:
+  * Blob soft delete, infrastructure encryption and disabling Storage Account shared key access. Rubrik requires blob
+    soft delete and infrastructure encryption to be disabled and the shared key access to be enabled, since the
+    bootstrap of the cluster authenticates with the Storage Account connection string. Infrastructure encryption can
+    also only be set when the Storage Account is created.
+  * vTPM, Secure Boot, Trusted Launch and Confidential VM. They are not supported by CCES.
+  * Periodic assessment of missing system updates. Azure rejects it for the CCES image. CDM is updated through CDM
+    upgrades.
+  * A locked immutability policy on the Storage Account. Rubrik requires the container to have no attached retention
+    policies, since CDM manages the immutability locks of the backups itself.
+  * Azure Disk Encryption. Rubrik doesn't document it as supported on CCES nodes. Use the customer-managed keys and
+    encryption at host instead.
+
+This is released as a major version since the upgrade changes the Storage Account and all the managed disks of an
+existing deployment, and since the optional settings are disruptive when they are enabled on a running cluster.
+
 ### v1.1.0
 * Change the host caching mode of the Rubrik Cloud Cluster metadata disk from `ReadWrite` to `None`. CDM 9.3.3 and later
   require this. With `ReadWrite` the bootstrap of a new cluster fails, and on a running cluster the daily configuration
