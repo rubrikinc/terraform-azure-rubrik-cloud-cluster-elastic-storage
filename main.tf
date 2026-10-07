@@ -63,8 +63,11 @@ resource "azurerm_storage_account" "cc_storage_account" {
   blob_properties {
     versioning_enabled = var.enableImmutability
 
-    container_delete_retention_policy {
-      days = var.azure_sa_container_soft_delete_days
+    dynamic "container_delete_retention_policy" {
+      for_each = var.azure_sa_container_soft_delete_days > 0 ? [1] : []
+      content {
+        days = var.azure_sa_container_soft_delete_days
+      }
     }
   }
 
@@ -79,8 +82,13 @@ resource "azurerm_storage_account" "cc_storage_account" {
     expiration_action = "Log"
   }
 
+  # The identity is attached whenever it is set, and not only when the storage
+  # account is encrypted with a customer-managed key. Azure doesn't allow the
+  # key and the identity to be removed in the same update, so removing the key
+  # and then the identity takes two applies.
+
   dynamic "identity" {
-    for_each = var.azure_sa_cmk_key_vault_key_id == null ? [] : [1]
+    for_each = var.azure_cmk_user_assigned_identity_id == null ? [] : [1]
     content {
       type         = "UserAssigned"
       identity_ids = [var.azure_cmk_user_assigned_identity_id]
@@ -101,6 +109,11 @@ resource "azurerm_storage_account" "cc_storage_account" {
     precondition {
       condition     = var.azure_sa_cmk_key_vault_key_id == null || var.azure_cmk_user_assigned_identity_id != null
       error_message = "The 'azure_cmk_user_assigned_identity_id' variable is required when 'azure_sa_cmk_key_vault_key_id' is set."
+    }
+
+    precondition {
+      condition     = var.azure_sa_logs_eventhub_name == null || var.azure_sa_logs_eventhub_authorization_rule_id != null
+      error_message = "The 'azure_sa_logs_eventhub_authorization_rule_id' variable is required when 'azure_sa_logs_eventhub_name' is set."
     }
   }
 }
@@ -378,8 +391,8 @@ resource "azurerm_managed_disk" "cces_data_disk" {
   create_option                 = "Empty"
   disk_size_gb                  = "512"
   disk_encryption_set_id        = one(azurerm_disk_encryption_set.cces[*].id)
-  network_access_policy         = "DenyAll"
-  public_network_access_enabled = false
+  network_access_policy         = var.azure_disk_restrict_network_access ? "DenyAll" : "AllowAll"
+  public_network_access_enabled = !var.azure_disk_restrict_network_access
   tags                          = var.azure_tags
 }
 
@@ -415,8 +428,8 @@ resource "azurerm_managed_disk" "cces_metadata_disk" {
   create_option                 = "Empty"
   disk_size_gb                  = "132"
   disk_encryption_set_id        = one(azurerm_disk_encryption_set.cces[*].id)
-  network_access_policy         = "DenyAll"
-  public_network_access_enabled = false
+  network_access_policy         = var.azure_disk_restrict_network_access ? "DenyAll" : "AllowAll"
+  public_network_access_enabled = !var.azure_disk_restrict_network_access
   tags                          = var.azure_tags
 }
 
@@ -449,8 +462,8 @@ resource "azurerm_managed_disk" "cces_cache_disk" {
   create_option                 = "Empty"
   disk_size_gb                  = "206"
   disk_encryption_set_id        = one(azurerm_disk_encryption_set.cces[*].id)
-  network_access_policy         = "DenyAll"
-  public_network_access_enabled = false
+  network_access_policy         = var.azure_disk_restrict_network_access ? "DenyAll" : "AllowAll"
+  public_network_access_enabled = !var.azure_disk_restrict_network_access
   tags                          = var.azure_tags
 }
 
