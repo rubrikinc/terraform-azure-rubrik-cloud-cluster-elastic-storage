@@ -35,6 +35,12 @@ variable "azure_tags" {
 
 # Cloud Cluster Node Information
 
+variable "azure_allow_extension_operations" {
+  description = "Whether virtual machine extensions can be installed on the Rubrik Cloud Cluster nodes. CDM manages its own operating system, so the module installs no extensions. Set to `false` to block extension operations on the nodes. Do this only if no extensions, such as monitoring or security agents, are required on the nodes. Defaults to `true` to not change the behavior of existing deployments."
+  type        = bool
+  default     = true
+}
+
 variable "azure_cces_plan_name" {
   description = "The Azure Marketplace Plan Name/ID of the CCES image to deploy. See the README.MD file of this module for information on finding the plan name."
 }
@@ -64,6 +70,18 @@ variable "azure_cces_vm_size" {
   description = "The Azure VM Machine Type to use for the Cloud Cluster nodes."
   type        = string
   default     = "Standard_D16s_v5"
+}
+
+variable "azure_enable_boot_diagnostics" {
+  description = "Enable boot diagnostics, using a Microsoft managed storage account, on the Rubrik Cloud Cluster nodes. Defaults to `false` to not change the behavior of existing deployments."
+  type        = bool
+  default     = false
+}
+
+variable "azure_enable_encryption_at_host" {
+  description = "Enable encryption at host on the Rubrik Cloud Cluster nodes, which encrypts the host cache of the disks and the data flowing to Azure Storage. The `Microsoft.Compute/EncryptionAtHost` feature must be registered on the Azure subscription, and `azure_cces_vm_size` must support encryption at host. Changing this on a running cluster deallocates and restarts the nodes, so apply it during a maintenance window. Defaults to `false` to not change the behavior of existing deployments."
+  type        = bool
+  default     = false
 }
 
 variable "azure_key_vault_name" {
@@ -103,6 +121,24 @@ variable "azure_vnet_rg_name" {
 
 # Storage Variables
 
+variable "azure_cmk_user_assigned_identity_id" {
+  description = "The ID of a user-assigned managed identity that Azure uses to access the Key Vault keys in `azure_sa_cmk_key_vault_key_id` and `azure_disk_cmk_key_vault_key_id`. The identity must be granted the `Get`, `Wrap Key` and `Unwrap Key` key permissions, or the `Key Vault Crypto Service Encryption User` role, on the keys before applying the module. The module doesn't create the identity, the key vault or the keys, as the key ownership is a customer decision."
+  type        = string
+  default     = null
+}
+
+variable "azure_disk_cmk_key_vault_key_id" {
+  description = "The ID of the Azure Key Vault key used to encrypt the Rubrik Cloud Cluster disks, including the OS disks, with a customer-managed key. The module creates a disk encryption set for the key, which double encrypts the disks with both a platform-managed key and the customer-managed key. Use a key ID without a version to have Azure automatically use the latest key version. Requires `azure_cmk_user_assigned_identity_id`. The key vault must have soft delete and purge protection enabled. Azure Key Vault becomes a hard dependency of the nodes, if the key is deleted or disabled, or if the identity loses access to the key, the nodes fail to start and the disks become inaccessible. Changing this on a running cluster deallocates and restarts the nodes, so apply it during a maintenance window. When not set, the disks are encrypted with a platform-managed key."
+  type        = string
+  default     = null
+}
+
+variable "azure_disk_restrict_network_access" {
+  description = "Restrict network access to the managed disks of the Rubrik Cloud Cluster nodes. When `true`, the network access policy of the disks is `DenyAll` and public network access is disabled, which blocks exporting a disk through a SAS URL. It can also affect services that read the disks through a SAS URL, such as backup, disaster recovery and security scanning tools. Defaults to `false` to not change the behavior of existing deployments."
+  type        = bool
+  default     = false
+}
+
 variable "azure_enable_subnet_storage_endpoint" {
   description = "Whether to enable the Storage service endpoint on the VPC subnet. Defaults to `true`."
   type        = bool
@@ -131,15 +167,94 @@ variable "azure_os_disk_caching" {
   }
 }
 
+variable "azure_sa_allowed_ip_ranges" {
+  description = "Public IPv4 addresses or CIDR ranges that are allowed to access the Azure Storage Account when `azure_sa_restrict_network_access` is `true`. Use it to allow the hosts that manage the Storage Account, for example the Terraform runner, when they are outside of the CCES subnet. Azure doesn't support private IP ranges, or `/31` and `/32` ranges, use single IP addresses instead of `/31` and `/32` ranges."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for r in var.azure_sa_allowed_ip_ranges : can(cidrnetmask(length(split("/", r)) == 2 ? r : "${r}/32"))])
+    error_message = "Each IP range must be an IPv4 address or an IPv4 CIDR range."
+  }
+
+  validation {
+    condition     = alltrue([for r in var.azure_sa_allowed_ip_ranges : try(tonumber(split("/", r)[1]) <= 30, true)])
+    error_message = "Azure doesn't support /31 and /32 IP ranges, use a single IP address instead."
+  }
+
+  validation {
+    condition     = alltrue([for r in var.azure_sa_allowed_ip_ranges : !can(regex("^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)", r))])
+    error_message = "Azure doesn't support private IP ranges."
+  }
+}
+
+variable "azure_sa_cmk_key_vault_key_id" {
+  description = "The ID of the Azure Key Vault key used to encrypt the Azure Storage Account with a customer-managed key. Use a key ID without a version to have Azure automatically use the latest key version. Requires `azure_cmk_user_assigned_identity_id`. The key vault must have soft delete and purge protection enabled. Azure Key Vault becomes a hard dependency of the Storage Account, if the key is deleted or disabled, or if the identity loses access to the key, the cluster data becomes inaccessible. When not set, the Storage Account is encrypted with a Microsoft-managed key."
+  type        = string
+  default     = null
+}
+
+variable "azure_sa_container_soft_delete_days" {
+  description = "The number of days a deleted container is retained in the Azure Storage Account, 1 to 365. Set to `0` to disable container soft delete. Rubrik requires blob soft delete to be disabled, which is not changed by this setting. Rubrik doesn't document container soft delete for CCES, so it is disabled by default."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.azure_sa_container_soft_delete_days >= 0 && var.azure_sa_container_soft_delete_days <= 365
+    error_message = "The container soft delete retention must be 0, to disable it, or between 1 and 365 days."
+  }
+}
+
+variable "azure_sa_logs_eventhub_authorization_rule_id" {
+  description = "The ID of an Event Hub authorization rule to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to."
+  type        = string
+  default     = null
+}
+
+variable "azure_sa_logs_eventhub_name" {
+  description = "The name of the Event Hub to send the logs to, requires `azure_sa_logs_eventhub_authorization_rule_id`. When not set, the default Event Hub of the namespace is used."
+  type        = string
+  default     = null
+}
+
+variable "azure_sa_logs_log_analytics_workspace_id" {
+  description = "The ID of a Log Analytics workspace to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to. Do not send the logs to the CCES Storage Account itself, the log volume of a backup workload is high."
+  type        = string
+  default     = null
+}
+
+variable "azure_sa_logs_storage_account_id" {
+  description = "The ID of a Storage Account to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to. Do not use the CCES Storage Account, the log volume of a backup workload is high."
+  type        = string
+  default     = null
+}
+
 variable "azure_sa_name" {
   description = "The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources."
   type        = string
 }
 
 variable "azure_sa_replication_type" {
-  description = "The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster."
+  description = "The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster. Defaults to `LRS` to avoid doubling the storage cost. Use `GRS` or `GZRS` to enable geo-redundant storage."
   type        = string
   default     = "LRS"
+}
+
+variable "azure_sa_restrict_network_access" {
+  description = "Restrict network access to the Azure Storage Account. When `true`, the default action of the network rules is `Deny` and only the CCES subnet, the IP ranges in `azure_sa_allowed_ip_ranges` and trusted Azure services are allowed access. Clients outside of the CCES subnet are denied access unless their IP address is allowed. The CCES subnet must have the `Microsoft.Storage` service endpoint, see `azure_enable_subnet_storage_endpoint`. Defaults to `false` to not change the behavior of existing deployments."
+  type        = bool
+  default     = false
+}
+
+variable "azure_sa_sas_expiration_period" {
+  description = "The maximum validity of a shared access signature (SAS) for the Azure Storage Account, in the format `DD.HH:MM:SS`. The module doesn't create any SAS tokens, and the policy only logs SAS tokens that are valid for longer than this."
+  type        = string
+  default     = "7.00:00:00"
+
+  validation {
+    condition     = can(regex("^\\d+\\.([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$", var.azure_sa_sas_expiration_period))
+    error_message = "The SAS expiration period must be in the format 'DD.HH:MM:SS'. For example, '7.00:00:00'."
+  }
 }
 
 variable "enableImmutability" {

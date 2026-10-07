@@ -5,7 +5,7 @@ This module deploys a new Rubrik Cloud Cluster Elastic Storage (CCES) in Azure.
 ```hcl
 module "rubrik_azure_cloud_cluster_elastic_storage" {
   source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
-  version = "1.1.0"
+  version = "2.0.0"
 
   admin_email           = "build@rubrik.com"
   admin_password        = "RubrikGoForward"
@@ -27,6 +27,56 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 ```
 
 ## Changelog
+
+### v2.0.0
+* Address the findings that Azure security scanners raise against the module. Settings that can disrupt a running
+  cluster, or that Rubrik doesn't document for CCES, are opt-in input variables that default to the current behavior, so
+  upgrading the module doesn't change how an existing cluster runs unless the variables are set. See the upgrade
+  instructions in the README before upgrading.
+* Add the `azure_sa_restrict_network_access` input variable, which sets the default action of the Storage Account
+  network rules to `Deny` and only allows the CCES subnet and trusted Azure services. Hosts outside the CCES subnet
+  can be allowed with the new `azure_sa_allowed_ip_ranges` input variable.
+* Add the `azure_disk_restrict_network_access` input variable, which sets the network access policy of the managed
+  disks to `DenyAll` and disables public network access.
+* Add support for encrypting the Storage Account and the disks, including the OS disks, with customer-managed keys.
+  Set `azure_sa_cmk_key_vault_key_id` and `azure_disk_cmk_key_vault_key_id` to the IDs of Key Vault keys, together
+  with `azure_cmk_user_assigned_identity_id`. The module creates a disk encryption set which double encrypts the disks
+  with both a platform-managed key and the customer-managed key. The Key Vault and the keys are not created by the
+  module. Azure doesn't allow the disks to be changed back to a platform-managed key once a customer-managed key is
+  used.
+* Add the `azure_enable_encryption_at_host`, `azure_enable_boot_diagnostics` and `azure_allow_extension_operations`
+  input variables for the nodes. Encryption at host requires the `Microsoft.Compute/EncryptionAtHost` feature to be
+  registered on the Azure subscription.
+* Add the `azure_sa_logs_log_analytics_workspace_id`, `azure_sa_logs_storage_account_id`,
+  `azure_sa_logs_eventhub_authorization_rule_id` and `azure_sa_logs_eventhub_name` input variables, which send the
+  read, write and delete logs of the Storage Account to a destination provided by the user. Do not send the logs to
+  the CCES Storage Account.
+* Add the `azure_sa_container_soft_delete_days` input variable, which enables container soft delete. It is disabled by
+  default, since Rubrik doesn't document container soft delete for CCES. Add the `azure_sa_sas_expiration_period` input
+  variable.
+* Apply these settings to all deployments. They are updated in place and don't affect CCES:
+  * Storage Account: disallow public access to containers, make Entra ID the default authentication in the Azure
+    portal, disable local users, set a SAS expiration policy that only logs, require SMB 3.1.1 and explicitly allow
+    trusted Azure services. This disables soft delete for file shares, which is enabled by default for new Storage
+    Accounts, and which Rubrik requires to be disabled.
+* The network rules of the Storage Account are now managed by the new `azurerm_storage_account_network_rules`
+  resource. It is added to the plan of an existing deployment, and changes nothing unless
+  `azure_sa_restrict_network_access` is set.
+* The following findings are not addressed, since CCES doesn't support the setting:
+  * Blob soft delete, infrastructure encryption and disabling Storage Account shared key access. Rubrik requires blob
+    soft delete and infrastructure encryption to be disabled and the shared key access to be enabled, since the
+    bootstrap of the cluster authenticates with the Storage Account connection string. Infrastructure encryption can
+    also only be set when the Storage Account is created.
+  * vTPM, Secure Boot, Trusted Launch and Confidential VM. They are not supported by CCES.
+  * Periodic assessment of missing system updates. Azure rejects it for the CCES image. CDM is updated through CDM
+    upgrades.
+  * A locked immutability policy on the Storage Account. Rubrik requires the container to have no attached retention
+    policies, since CDM manages the immutability locks of the backups itself.
+  * Azure Disk Encryption. Rubrik doesn't document it as supported on CCES nodes. Use the customer-managed keys and
+    encryption at host instead.
+
+This is released as a major version since the upgrade changes the Storage Account of an existing deployment, and since
+the optional settings are disruptive when they are enabled on a running cluster.
 
 ### v1.1.0
 * Change the host caching mode of the Rubrik Cloud Cluster metadata disk from `ReadWrite` to `None`. CDM 9.3.3 and later
@@ -91,7 +141,7 @@ Before upgrading the module, be sure to read through the changelog to understand
 upgrade instruction for the version you are upgrading to. 
 
 To upgrade the module to a new version, use the following steps:
-1. Update the `version` field in the `module` block to the version you want to upgrade to, e.g. `version = "1.1.0"`.
+1. Update the `version` field in the `module` block to the version you want to upgrade to, e.g. `version = "2.0.0"`.
 2. Run `terraform init --upgrade` to update the modules in your configuration.
 3. Run `terraform plan` and check the output carefully to ensure that there are no unexpected changes caused by the
    upgrade.
@@ -100,6 +150,41 @@ To upgrade the module to a new version, use the following steps:
 Note, as variables in the module are deprecated, you may see warnings in the output of `terraform plan`. These warnings
 can be ignored, but it's recommended that you follow the instructions in the deprecation message. Eventually deprecated
 variables will be removed.
+
+### v1.1.0 to v2.0.0
+Version `v2.0.0` hardens the Storage Account of every deployment, and adds optional settings that are disabled by
+default. Upgrading doesn't restart the cluster nodes and doesn't change how CCES reaches its storage.
+
+The plan of an existing deployment contains these changes, and no resources are destroyed or recreated:
+```text
+# module.<module-name>.azurerm_storage_account.cc_storage_account will be updated in-place
+# module.<module-name>.azurerm_storage_account_network_rules.cc_storage_account will be created
+```
+The Storage Account is updated to disallow public access to containers, make Entra ID the default authentication in the
+Azure portal, disable local users, add a SAS expiration policy that only logs, require SMB 3.1.1 and disable soft delete
+for file shares. The new network rules resource keeps the default action of the Storage Account at `Allow`, until
+`azure_sa_restrict_network_access` is set. None of these changes affect the CCES data path, and no
+`azurerm_managed_disk` or `azurerm_linux_virtual_machine` is changed.
+
+The optional settings are not applied until their input variables are set. Enabling them on a running cluster has this
+impact:
+
+| Input variable                                                      | Impact when enabled on a running cluster                                                       |
+|---------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| `azure_sa_restrict_network_access`                                  | In-place. Hosts outside the CCES subnet are denied access to the data.                         |
+| `azure_sa_cmk_key_vault_key_id`                                     | In-place. The Storage Account gets the identity and depends on the Key Vault key.              |
+| `azure_disk_cmk_key_vault_key_id`                                   | **Deallocates and restarts the nodes.** Azure doesn't allow it to be reverted.                 |
+| `azure_enable_encryption_at_host`                                   | **Deallocates and restarts the nodes.**                                                        |
+| `azure_disk_restrict_network_access`                                | In-place. Blocks access to the disks through SAS URLs, which some backup and scanning tools use. |
+| `azure_sa_container_soft_delete_days`                               | In-place.                                                                                      |
+| `azure_enable_boot_diagnostics`, `azure_allow_extension_operations` | In-place.                                                                                      |
+| `azure_sa_logs_*`                                                   | Adds diagnostic settings to the Storage Account.                                               |
+
+See [Security Settings](#security-settings) for how to use them. Apply the settings that restart the nodes during a
+maintenance window.
+
+This change is released as a major version so that existing deployments are not upgraded automatically. Deployments
+using a version constraint such as `version = "~> 1.1"` will not pick up `v2.0.0`.
 
 ### v1.0.2 to v1.1.0
 In version `v1.1.0` the host caching mode of the Rubrik Cloud Cluster metadata disk changed from `ReadWrite` to
@@ -349,6 +434,125 @@ the `azure_tags` input variable to all the resources it creates, not only to the
 [MANA support for Network Virtual Appliances](https://learn.microsoft.com/en-us/azure/virtual-network/accelerated-networking-mana-network-virtual-appliance-opt-out)
 for details.
 
+## Security Settings
+The module applies a set of security settings to the Storage Account of every deployment. They are updated in place and
+don't affect CCES. The settings in this section are optional, since enabling them can disrupt a running cluster, or
+Rubrik doesn't document them for CCES. They are all disabled by default.
+
+### Restricting Network Access to the Storage Account
+Set the `azure_sa_restrict_network_access` input variable to `true` to set the default action of the Storage Account
+network rules to `Deny`. Only the CCES subnet, trusted Azure services and the IP addresses in the
+`azure_sa_allowed_ip_ranges` input variable are allowed access. The CCES nodes reach the Storage Account through the
+Storage service endpoint of the CCES subnet, so the endpoint must exist before the rules are applied. The module
+enables it by default, see [Subnet Network Storage Endpoint](#subnet-network-storage-endpoint). If
+`azure_enable_subnet_storage_endpoint` is `false`, the subnet must already have the endpoint. If the endpoint and the
+network rules are enabled in the same run on an existing deployment, and Azure rejects the network rules because the
+endpoint isn't ready yet, run apply again.
+
+Clients outside the CCES subnet, for example hosts used to browse the data in the Storage Account, are denied access
+unless their public IP address is in `azure_sa_allowed_ip_ranges`. Azure only supports public IPv4 addresses and CIDR
+ranges of `/30` or larger in the IP rules, use single IP addresses instead of `/31` and `/32` ranges. Terraform only
+uses the Azure management API for the Storage Account and the container, so a Terraform runner outside the CCES subnet
+is not affected.
+
+### Restricting Network Access to the Managed Disks
+Set `azure_disk_restrict_network_access` to `true` to set the network access policy of the managed disks to `DenyAll`
+and to disable public network access. This blocks exporting a disk through a SAS URL, and it doesn't affect the disk
+I/O of the nodes. It can also affect backup, disaster recovery and security scanning tools that read disks through a SAS
+URL. The setting is applied in place and can be reverted by setting the variable back to `false`.
+
+### Container Soft Delete
+Set `azure_sa_container_soft_delete_days` to a number of days between 1 and 365 to enable container soft delete, which
+retains a deleted container for that time. Rubrik requires blob soft delete to be disabled, which this setting doesn't
+change, and Rubrik doesn't document container soft delete for CCES, so it is disabled by default. Container soft delete
+only applies to a deleted container and not to the blobs in it, so it doesn't retain the blobs that CDM deletes. A
+container with the same name can't be created for a short time after the container is deleted, which Azure also does
+when container soft delete is disabled.
+
+### Customer-Managed Keys
+By default the Storage Account and the disks are encrypted with Microsoft-managed keys. Both can instead be
+encrypted with a customer-managed key (CMK), and they are configured independently of each other. CDM doesn't need
+any configuration for either. The Key Vault, the keys and the managed identity are owned by you, the module doesn't
+create them. Before applying the module:
+1. Create an Azure Key Vault with soft delete and purge protection enabled, and an RSA key in it. For the disks, the
+   Key Vault must be in the same region and tenant as the deployment.
+2. Create a user-assigned managed identity, and give it the `Get`, `Wrap Key` and `Unwrap Key` key permissions, or the
+   `Key Vault Crypto Service Encryption User` role, on the key.
+
+Then set `azure_cmk_user_assigned_identity_id` to the ID of the identity, and set `azure_sa_cmk_key_vault_key_id` for
+the Storage Account and `azure_disk_cmk_key_vault_key_id` for the disks to the IDs of the keys. Use a key ID without a
+version to have Azure automatically use the latest version of the key. For the disks the module creates a disk
+encryption set, which double encrypts the OS disks and the data, metadata and cache disks with both a platform-managed
+key and the customer-managed key.
+```hcl
+azure_cmk_user_assigned_identity_id = "/subscriptions/<subscription-id>/resourceGroups/<rg>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<name>"
+azure_sa_cmk_key_vault_key_id       = "https://<key-vault-name>.vault.azure.net/keys/<key-name>"
+azure_disk_cmk_key_vault_key_id     = "https://<key-vault-name>.vault.azure.net/keys/<key-name>"
+```
+Azure Key Vault becomes a hard dependency of the cluster. If the key is deleted or disabled, or if the identity loses
+access to the key, the data in the Storage Account becomes inaccessible and the nodes fail to start. Enabling the keys
+on the disks of a running cluster deallocates and restarts the nodes, which took about six minutes for a single node.
+Apply it during a maintenance window. Enabling the key on the Storage Account is done in place.
+
+Enabling a customer-managed key on a Storage Account that already contains data doesn't re-encrypt the data. Azure
+Storage encrypts the data with an account encryption key in both cases, and the customer-managed key changes which key
+protects that account encryption key. See
+[Customer-managed keys for account encryption](https://learn.microsoft.com/en-us/azure/storage/common/customer-managed-keys-overview).
+Enabling the keys on a running cluster doesn't affect the data that CDM has already written. CDM keeps reading and
+writing the Storage Account, and the node starts normally after the disks are changed.
+
+The identity is attached to the Storage Account whenever `azure_cmk_user_assigned_identity_id` is set. To go back to a
+Microsoft-managed key for the Storage Account, first remove `azure_sa_cmk_key_vault_key_id` and apply, and then remove
+`azure_cmk_user_assigned_identity_id` and apply. Azure doesn't allow the key and the identity to be removed in the same
+update. Terraform can't change the disks back to a platform-managed key once a customer-managed key is used on them,
+so `azure_disk_cmk_key_vault_key_id` can't be removed again.
+
+### Encryption at Host
+Set `azure_enable_encryption_at_host` to `true` to also encrypt the host cache of the disks and the data flowing to
+Azure Storage. The `Microsoft.Compute/EncryptionAtHost` feature must be registered on the Azure subscription, and the
+VM size in `azure_cces_vm_size` must support it:
+```text
+az feature register --namespace Microsoft.Compute --name EncryptionAtHost
+az provider register --namespace Microsoft.Compute
+```
+Enabling it on a running cluster deallocates and restarts the nodes. Apply it during a maintenance window.
+
+### Boot Diagnostics and VM Extensions
+Set `azure_enable_boot_diagnostics` to `true` to enable boot diagnostics using a Microsoft managed storage account.
+CDM manages its own operating system, so the module installs no VM extensions. Set `azure_allow_extension_operations`
+to `false` to also block the installation of extensions on the nodes. Only do this if no extensions, such as
+monitoring or security agents, are required on the nodes. Both settings are applied in place without restarting the
+nodes.
+
+### Storage Account Logs
+Set one or more of `azure_sa_logs_log_analytics_workspace_id`, `azure_sa_logs_storage_account_id` and
+`azure_sa_logs_eventhub_authorization_rule_id` to send the read, write and delete logs of the blob, queue, table and
+file services of the Storage Account to those destinations. Azure sends the logs to every destination that is set. Use
+`azure_sa_logs_eventhub_name`, which requires `azure_sa_logs_eventhub_authorization_rule_id`, to select the Event Hub.
+Do not send the logs to the CCES Storage Account itself, since the log volume of a backup workload is high.
+
+### Settings That CCES Doesn't Support
+Some findings of Azure security scanners can't be addressed, since the setting isn't supported by CCES. Rubrik documents
+the Storage Account requirements in
+[Storage settings required by Rubrik Cloud Cluster ES on Azure](https://docs.rubrik.com/en-us/saas/common/azure_storage_settings.html)
+and [Prerequisites for Rubrik Cloud Cluster ES on Azure](https://docs.rubrik.com/en-us/saas/common/azr_cc_es_prereq.html).
+* **Storage Account shared key access** must stay enabled. The required storage settings list "Enable storage account
+  key access" as "Enabled", and the bootstrap of the cluster authenticates with the Storage Account connection string.
+* **Blob soft delete** must stay disabled. The prerequisites list "Blob soft delete disabled", since immutable storage
+  manages retention at the version level and soft delete might interfere with immutability.
+* **Infrastructure encryption** must stay disabled. The required storage settings list "Enable infrastructure
+  encryption" as "Not enabled". It can also only be set when the Storage Account is created.
+* **A locked immutability policy** on the Storage Account or the container isn't used. The prerequisites state that the
+  container must not have any attached retention policies, and the required storage settings state that no access
+  policies may be associated with the container. CDM manages the immutability locks of the backups itself, see
+  [Immutable storage in Cloud Cluster ES](https://docs.rubrik.com/en-us/saas/common/cces_immutable_storage.html).
+* **vTPM, Secure Boot, Trusted Launch and Confidential VM** are not supported by CCES.
+* **Periodic assessment of missing system updates** isn't supported by Azure for the CCES image, Azure rejects it with
+  the message "The selected VM image is not supported for VM Guest patch operations". CDM is updated through CDM
+  upgrades.
+* **Azure Disk Encryption** is not used, Rubrik doesn't document it as supported on Cloud Cluster ES nodes. Use
+  customer-managed keys and encryption at host instead.
+
 ## Additional Documentation
 * [Microsoft Azure CLI Installation](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 * [Microsoft Azure CLI Authentication](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli)
@@ -381,6 +585,7 @@ for details.
 | ---- | ---- |
 | [azapi_resource.cc_container](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) | resource |
 | [azapi_update_resource.cces_subnet_storage_endpoint](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/update_resource) | resource |
+| [azurerm_disk_encryption_set.cces](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/disk_encryption_set) | resource |
 | [azurerm_key_vault.cc_key_vault](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault) | resource |
 | [azurerm_key_vault_secret.cc_private_ssh_key](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault_secret) | resource |
 | [azurerm_linux_virtual_machine.cces_node](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/linux_virtual_machine) | resource |
@@ -392,16 +597,19 @@ for details.
 | [azurerm_management_lock.cces_metadata_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
 | [azurerm_management_lock.cces_nic](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
 | [azurerm_management_lock.cces_node](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) | resource |
+| [azurerm_monitor_diagnostic_setting.cc_storage_account](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/monitor_diagnostic_setting) | resource |
 | [azurerm_network_interface.cces_nic](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_interface) | resource |
 | [azurerm_resource_group.cc_rg](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group) | resource |
 | [azurerm_ssh_public_key.cc_public_ssh_key](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/ssh_public_key) | resource |
 | [azurerm_storage_account.cc_storage_account](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account) | resource |
+| [azurerm_storage_account_network_rules.cc_storage_account](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account_network_rules) | resource |
 | [azurerm_virtual_machine_data_disk_attachment.cces_cache_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_data_disk_attachment) | resource |
 | [azurerm_virtual_machine_data_disk_attachment.cces_data_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_data_disk_attachment) | resource |
 | [azurerm_virtual_machine_data_disk_attachment.cces_metadata_disk](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_data_disk_attachment) | resource |
 | [polaris_cdm_bootstrap_cces_azure.bootstrap_cces_azure](https://registry.terraform.io/providers/rubrikinc/polaris/latest/docs/resources/cdm_bootstrap_cces_azure) | resource |
 | [polaris_cdm_registration.cces_azure_registration](https://registry.terraform.io/providers/rubrikinc/polaris/latest/docs/resources/cdm_registration) | resource |
 | [time_sleep.wait_for_nodes_to_boot](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/sleep) | resource |
+| [time_sleep.wait_for_nodes_to_provision](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/sleep) | resource |
 | [tls_private_key.cc-key](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
 | [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
 | [azurerm_subnet.cces_subnet](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/subnet) | data source |
@@ -413,10 +621,16 @@ for details.
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_admin_email"></a> [admin\_email](#input\_admin\_email) | The Rubrik Cloud Cluster sends messages for the admin account to this email address. | `string` | n/a | yes |
 | <a name="input_admin_password"></a> [admin\_password](#input\_admin\_password) | Password for the Rubrik Cloud Cluster admin account. | `string` | `"ChangeMe"` | no |
+| <a name="input_azure_allow_extension_operations"></a> [azure\_allow\_extension\_operations](#input\_azure\_allow\_extension\_operations) | Whether virtual machine extensions can be installed on the Rubrik Cloud Cluster nodes. CDM manages its own operating system, so the module installs no extensions. Set to `false` to block extension operations on the nodes. Do this only if no extensions, such as monitoring or security agents, are required on the nodes. Defaults to `true` to not change the behavior of existing deployments. | `bool` | `true` | no |
 | <a name="input_azure_cces_plan_name"></a> [azure\_cces\_plan\_name](#input\_azure\_cces\_plan\_name) | The Azure Marketplace Plan Name/ID of the CCES image to deploy. See the README.MD file of this module for information on finding the plan name. | `any` | n/a | yes |
 | <a name="input_azure_cces_sku"></a> [azure\_cces\_sku](#input\_azure\_cces\_sku) | The SKU for the Azure Marketplace Image of CCES to deploy. See the README.MD file of this module for information on finding the SKU. | `string` | n/a | yes |
 | <a name="input_azure_cces_version"></a> [azure\_cces\_version](#input\_azure\_cces\_version) | The version of CCES to deploy. Use 'latest' to deploy the latest available version. Note: This only applies to the version within a SKU (major/minor version). | `string` | `"latest"` | no |
 | <a name="input_azure_cces_vm_size"></a> [azure\_cces\_vm\_size](#input\_azure\_cces\_vm\_size) | The Azure VM Machine Type to use for the Cloud Cluster nodes. | `string` | `"Standard_D16s_v5"` | no |
+| <a name="input_azure_cmk_user_assigned_identity_id"></a> [azure\_cmk\_user\_assigned\_identity\_id](#input\_azure\_cmk\_user\_assigned\_identity\_id) | The ID of a user-assigned managed identity that Azure uses to access the Key Vault keys in `azure_sa_cmk_key_vault_key_id` and `azure_disk_cmk_key_vault_key_id`. The identity must be granted the `Get`, `Wrap Key` and `Unwrap Key` key permissions, or the `Key Vault Crypto Service Encryption User` role, on the keys before applying the module. The module doesn't create the identity, the key vault or the keys, as the key ownership is a customer decision. | `string` | `null` | no |
+| <a name="input_azure_disk_cmk_key_vault_key_id"></a> [azure\_disk\_cmk\_key\_vault\_key\_id](#input\_azure\_disk\_cmk\_key\_vault\_key\_id) | The ID of the Azure Key Vault key used to encrypt the Rubrik Cloud Cluster disks, including the OS disks, with a customer-managed key. The module creates a disk encryption set for the key, which double encrypts the disks with both a platform-managed key and the customer-managed key. Use a key ID without a version to have Azure automatically use the latest key version. Requires `azure_cmk_user_assigned_identity_id`. The key vault must have soft delete and purge protection enabled. Azure Key Vault becomes a hard dependency of the nodes, if the key is deleted or disabled, or if the identity loses access to the key, the nodes fail to start and the disks become inaccessible. Changing this on a running cluster deallocates and restarts the nodes, so apply it during a maintenance window. When not set, the disks are encrypted with a platform-managed key. | `string` | `null` | no |
+| <a name="input_azure_disk_restrict_network_access"></a> [azure\_disk\_restrict\_network\_access](#input\_azure\_disk\_restrict\_network\_access) | Restrict network access to the managed disks of the Rubrik Cloud Cluster nodes. When `true`, the network access policy of the disks is `DenyAll` and public network access is disabled, which blocks exporting a disk through a SAS URL. It can also affect services that read the disks through a SAS URL, such as backup, disaster recovery and security scanning tools. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
+| <a name="input_azure_enable_boot_diagnostics"></a> [azure\_enable\_boot\_diagnostics](#input\_azure\_enable\_boot\_diagnostics) | Enable boot diagnostics, using a Microsoft managed storage account, on the Rubrik Cloud Cluster nodes. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
+| <a name="input_azure_enable_encryption_at_host"></a> [azure\_enable\_encryption\_at\_host](#input\_azure\_enable\_encryption\_at\_host) | Enable encryption at host on the Rubrik Cloud Cluster nodes, which encrypts the host cache of the disks and the data flowing to Azure Storage. The `Microsoft.Compute/EncryptionAtHost` feature must be registered on the Azure subscription, and `azure_cces_vm_size` must support encryption at host. Changing this on a running cluster deallocates and restarts the nodes, so apply it during a maintenance window. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
 | <a name="input_azure_enable_subnet_storage_endpoint"></a> [azure\_enable\_subnet\_storage\_endpoint](#input\_azure\_enable\_subnet\_storage\_endpoint) | Whether to enable the Storage service endpoint on the VPC subnet. Defaults to `true`. | `bool` | `true` | no |
 | <a name="input_azure_key_vault_name"></a> [azure\_key\_vault\_name](#input\_azure\_key\_vault\_name) | The name of the Azure Key Vault to create, into which the CCES private ssh key will be stored. | `string` | `""` | no |
 | <a name="input_azure_location"></a> [azure\_location](#input\_azure\_location) | The region to deploy Rubrik Cloud Cluster resources. | `any` | n/a | yes |
@@ -424,8 +638,17 @@ for details.
 | <a name="input_azure_os_disk_caching"></a> [azure\_os\_disk\_caching](#input\_azure\_os\_disk\_caching) | Host caching mode for the Rubrik Cloud Cluster OS disk. Can be 'None', 'ReadOnly' or 'ReadWrite'. When not set, it defaults to 'None' on CDM 9.2.2 and later, following the Rubrik host caching recommendation, and to 'ReadWrite' on earlier versions, which leaves those deployments unchanged. Changing this on a running cluster restarts the nodes, so on an upgrade either apply it during a maintenance window or set it to 'ReadWrite' to keep the current behaviour. | `string` | `null` | no |
 | <a name="input_azure_resource_group"></a> [azure\_resource\_group](#input\_azure\_resource\_group) | The Azure Resource Group into which deploy Rubrik Cloud Cluster resources. | `string` | `"RubrikCloudCluster"` | no |
 | <a name="input_azure_resource_lock"></a> [azure\_resource\_lock](#input\_azure\_resource\_lock) | Enable the Azure Resource Lock on critical components that are created by this module. | `bool` | `true` | no |
+| <a name="input_azure_sa_allowed_ip_ranges"></a> [azure\_sa\_allowed\_ip\_ranges](#input\_azure\_sa\_allowed\_ip\_ranges) | Public IPv4 addresses or CIDR ranges that are allowed to access the Azure Storage Account when `azure_sa_restrict_network_access` is `true`. Use it to allow the hosts that manage the Storage Account, for example the Terraform runner, when they are outside of the CCES subnet. Azure doesn't support private IP ranges, or `/31` and `/32` ranges, use single IP addresses instead of `/31` and `/32` ranges. | `list(string)` | `[]` | no |
+| <a name="input_azure_sa_cmk_key_vault_key_id"></a> [azure\_sa\_cmk\_key\_vault\_key\_id](#input\_azure\_sa\_cmk\_key\_vault\_key\_id) | The ID of the Azure Key Vault key used to encrypt the Azure Storage Account with a customer-managed key. Use a key ID without a version to have Azure automatically use the latest key version. Requires `azure_cmk_user_assigned_identity_id`. The key vault must have soft delete and purge protection enabled. Azure Key Vault becomes a hard dependency of the Storage Account, if the key is deleted or disabled, or if the identity loses access to the key, the cluster data becomes inaccessible. When not set, the Storage Account is encrypted with a Microsoft-managed key. | `string` | `null` | no |
+| <a name="input_azure_sa_container_soft_delete_days"></a> [azure\_sa\_container\_soft\_delete\_days](#input\_azure\_sa\_container\_soft\_delete\_days) | The number of days a deleted container is retained in the Azure Storage Account, 1 to 365. Set to `0` to disable container soft delete. Rubrik requires blob soft delete to be disabled, which is not changed by this setting. Rubrik doesn't document container soft delete for CCES, so it is disabled by default. | `number` | `0` | no |
+| <a name="input_azure_sa_logs_eventhub_authorization_rule_id"></a> [azure\_sa\_logs\_eventhub\_authorization\_rule\_id](#input\_azure\_sa\_logs\_eventhub\_authorization\_rule\_id) | The ID of an Event Hub authorization rule to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to. | `string` | `null` | no |
+| <a name="input_azure_sa_logs_eventhub_name"></a> [azure\_sa\_logs\_eventhub\_name](#input\_azure\_sa\_logs\_eventhub\_name) | The name of the Event Hub to send the logs to, requires `azure_sa_logs_eventhub_authorization_rule_id`. When not set, the default Event Hub of the namespace is used. | `string` | `null` | no |
+| <a name="input_azure_sa_logs_log_analytics_workspace_id"></a> [azure\_sa\_logs\_log\_analytics\_workspace\_id](#input\_azure\_sa\_logs\_log\_analytics\_workspace\_id) | The ID of a Log Analytics workspace to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to. Do not send the logs to the CCES Storage Account itself, the log volume of a backup workload is high. | `string` | `null` | no |
+| <a name="input_azure_sa_logs_storage_account_id"></a> [azure\_sa\_logs\_storage\_account\_id](#input\_azure\_sa\_logs\_storage\_account\_id) | The ID of a Storage Account to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to. Do not use the CCES Storage Account, the log volume of a backup workload is high. | `string` | `null` | no |
 | <a name="input_azure_sa_name"></a> [azure\_sa\_name](#input\_azure\_sa\_name) | The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources. | `string` | n/a | yes |
-| <a name="input_azure_sa_replication_type"></a> [azure\_sa\_replication\_type](#input\_azure\_sa\_replication\_type) | The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster. | `string` | `"LRS"` | no |
+| <a name="input_azure_sa_replication_type"></a> [azure\_sa\_replication\_type](#input\_azure\_sa\_replication\_type) | The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster. Defaults to `LRS` to avoid doubling the storage cost. Use `GRS` or `GZRS` to enable geo-redundant storage. | `string` | `"LRS"` | no |
+| <a name="input_azure_sa_restrict_network_access"></a> [azure\_sa\_restrict\_network\_access](#input\_azure\_sa\_restrict\_network\_access) | Restrict network access to the Azure Storage Account. When `true`, the default action of the network rules is `Deny` and only the CCES subnet, the IP ranges in `azure_sa_allowed_ip_ranges` and trusted Azure services are allowed access. Clients outside of the CCES subnet are denied access unless their IP address is allowed. The CCES subnet must have the `Microsoft.Storage` service endpoint, see `azure_enable_subnet_storage_endpoint`. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
+| <a name="input_azure_sa_sas_expiration_period"></a> [azure\_sa\_sas\_expiration\_period](#input\_azure\_sa\_sas\_expiration\_period) | The maximum validity of a shared access signature (SAS) for the Azure Storage Account, in the format `DD.HH:MM:SS`. The module doesn't create any SAS tokens, and the policy only logs SAS tokens that are valid for longer than this. | `string` | `"7.00:00:00"` | no |
 | <a name="input_azure_subnet_name"></a> [azure\_subnet\_name](#input\_azure\_subnet\_name) | Name of the Azure subnet to deploy Rubrik Cloud Cluster into. This subnet must be in the VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
 | <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. Deprecated: This variable is no longer required as the subscription ID is now determined by the provider configuration. | `string` | `null` | no |
 | <a name="input_azure_tags"></a> [azure\_tags](#input\_azure\_tags) | Tags to add to the Azure resources that this Terraform script creates, including the Rubrik cluster nodes. | `map(string)` | `{}` | no |

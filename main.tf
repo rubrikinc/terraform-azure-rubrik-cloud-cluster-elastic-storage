@@ -6,6 +6,14 @@ locals {
   enableImmutability = var.enableImmutability == true ? 1 : 0
   cluster_node_names = formatlist("${var.cluster_name}-%02s", range(1, var.number_of_nodes + 1))
   cluster_node_ips   = [for i in azurerm_linux_virtual_machine.cces_node : i.private_ip_address]
+
+  # The storage account services to send logs for, none unless a log destination
+  # is set.
+  sa_log_services = anytrue([
+    var.azure_sa_logs_log_analytics_workspace_id != null,
+    var.azure_sa_logs_storage_account_id != null,
+    var.azure_sa_logs_eventhub_authorization_rule_id != null,
+  ]) ? toset(["blob", "queue", "table", "file"]) : toset([])
 }
 
 ##################
@@ -38,18 +46,117 @@ resource "azurerm_resource_group" "cc_rg" {
 #####################################################
 
 resource "azurerm_storage_account" "cc_storage_account" {
-  name                          = var.azure_sa_name
-  resource_group_name           = azurerm_resource_group.cc_rg.name
-  location                      = azurerm_resource_group.cc_rg.location
-  account_tier                  = "Standard"
-  account_replication_type      = var.azure_sa_replication_type
-  public_network_access_enabled = true
+  name                            = var.azure_sa_name
+  resource_group_name             = azurerm_resource_group.cc_rg.name
+  location                        = azurerm_resource_group.cc_rg.location
+  account_tier                    = "Standard"
+  account_replication_type        = var.azure_sa_replication_type
+  public_network_access_enabled   = true
+  allow_nested_items_to_be_public = false
+  default_to_oauth_authentication = true
+  local_user_enabled              = false
+
+  # CCES authenticates to the storage account using the connection string, so
+  # shared key access must stay enabled and blob soft delete must stay disabled.
+  # Rubrik requires both, see the storage settings required by CCES on Azure.
 
   blob_properties {
     versioning_enabled = var.enableImmutability
+
+    dynamic "container_delete_retention_policy" {
+      for_each = var.azure_sa_container_soft_delete_days > 0 ? [1] : []
+      content {
+        days = var.azure_sa_container_soft_delete_days
+      }
+    }
+  }
+
+  share_properties {
+    smb {
+      versions = ["SMB3.1.1"]
+    }
+  }
+
+  sas_policy {
+    expiration_period = var.azure_sa_sas_expiration_period
+    expiration_action = "Log"
+  }
+
+  # The identity is attached whenever it is set, and not only when the storage
+  # account is encrypted with a customer-managed key. Azure doesn't allow the
+  # key and the identity to be removed in the same update, so removing the key
+  # and then the identity takes two applies.
+
+  dynamic "identity" {
+    for_each = var.azure_cmk_user_assigned_identity_id == null ? [] : [1]
+    content {
+      type         = "UserAssigned"
+      identity_ids = [var.azure_cmk_user_assigned_identity_id]
+    }
+  }
+
+  dynamic "customer_managed_key" {
+    for_each = var.azure_sa_cmk_key_vault_key_id == null ? [] : [1]
+    content {
+      key_vault_key_id          = var.azure_sa_cmk_key_vault_key_id
+      user_assigned_identity_id = var.azure_cmk_user_assigned_identity_id
+    }
   }
 
   tags = var.azure_tags
+
+  lifecycle {
+    precondition {
+      condition     = var.azure_sa_cmk_key_vault_key_id == null || var.azure_cmk_user_assigned_identity_id != null
+      error_message = "The 'azure_cmk_user_assigned_identity_id' variable is required when 'azure_sa_cmk_key_vault_key_id' is set."
+    }
+
+    precondition {
+      condition     = var.azure_sa_logs_eventhub_name == null || var.azure_sa_logs_eventhub_authorization_rule_id != null
+      error_message = "The 'azure_sa_logs_eventhub_authorization_rule_id' variable is required when 'azure_sa_logs_eventhub_name' is set."
+    }
+  }
+}
+
+# The network rules are managed by a separate resource, since the Storage Account
+# resource doesn't report unrestricted network rules back, which would cause a
+# perpetual diff. The CCES subnet is only added to the rules when the network
+# access is restricted, which requires the subnet to have the Storage service
+# endpoint.
+
+resource "azurerm_storage_account_network_rules" "cc_storage_account" {
+  storage_account_id         = azurerm_storage_account.cc_storage_account.id
+  default_action             = var.azure_sa_restrict_network_access ? "Deny" : "Allow"
+  bypass                     = ["AzureServices"]
+  ip_rules                   = var.azure_sa_allowed_ip_ranges
+  virtual_network_subnet_ids = var.azure_sa_restrict_network_access ? [data.azurerm_subnet.cces_subnet.id] : []
+
+  depends_on = [azapi_update_resource.cces_subnet_storage_endpoint]
+}
+
+# Send the read, write and delete logs of the storage account services to the
+# log destinations provided by the user.
+
+resource "azurerm_monitor_diagnostic_setting" "cc_storage_account" {
+  for_each                       = local.sa_log_services
+  name                           = "${var.cluster_name}-${each.value}-logs"
+  target_resource_id             = "${azurerm_storage_account.cc_storage_account.id}/${each.value}Services/default"
+  log_analytics_workspace_id     = var.azure_sa_logs_log_analytics_workspace_id
+  storage_account_id             = var.azure_sa_logs_storage_account_id
+  eventhub_authorization_rule_id = var.azure_sa_logs_eventhub_authorization_rule_id
+  eventhub_name                  = var.azure_sa_logs_eventhub_name
+
+  enabled_log {
+    category = "StorageRead"
+  }
+
+  enabled_log {
+    category = "StorageWrite"
+  }
+
+  enabled_log {
+    category = "StorageDelete"
+  }
 }
 
 # Workaround until azurerm_storage_container supports setting the version level immutability option.
@@ -148,6 +255,40 @@ resource "azurerm_ssh_public_key" "cc_public_ssh_key" {
   tags = var.azure_tags
 }
 
+############################################################
+# Create the disk encryption set for customer-managed keys #
+############################################################
+
+# Only created when the disks are encrypted with a customer-managed key. The key
+# vault, the key and the access of the identity to the key are owned by the user.
+
+resource "azurerm_disk_encryption_set" "cces" {
+  count               = var.azure_disk_cmk_key_vault_key_id == null ? 0 : 1
+  name                = "${var.cluster_name}-des"
+  resource_group_name = azurerm_resource_group.cc_rg.name
+  location            = azurerm_resource_group.cc_rg.location
+  key_vault_key_id    = var.azure_disk_cmk_key_vault_key_id
+  encryption_type     = "EncryptionAtRestWithPlatformAndCustomerKeys"
+
+  # A key ID without a version has five elements when split on the slash. Azure
+  # only rotates to the latest key version when the key ID has no version.
+  auto_key_rotation_enabled = length(split("/", var.azure_disk_cmk_key_vault_key_id)) == 5
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.azure_cmk_user_assigned_identity_id]
+  }
+
+  tags = var.azure_tags
+
+  lifecycle {
+    precondition {
+      condition     = var.azure_cmk_user_assigned_identity_id != null
+      error_message = "The 'azure_cmk_user_assigned_identity_id' variable is required when 'azure_disk_cmk_key_vault_key_id' is set."
+    }
+  }
+}
+
 ############################################
 # Launch the Rubrik Cloud Cluster ES Nodes #
 ######################k#####################
@@ -179,13 +320,15 @@ resource "azurerm_management_lock" "cces_nic" {
 # User needs to make sure that the marketplace agreement for CCES has been accepted before this runs.
 
 resource "azurerm_linux_virtual_machine" "cces_node" {
-  for_each              = toset(local.cluster_node_names)
-  name                  = "${each.value}-vm"
-  location              = azurerm_resource_group.cc_rg.location
-  resource_group_name   = azurerm_resource_group.cc_rg.name
-  network_interface_ids = [azurerm_network_interface.cces_nic[each.value].id]
-  size                  = var.azure_cces_vm_size
-  admin_username        = "azureuser"
+  for_each                   = toset(local.cluster_node_names)
+  name                       = "${each.value}-vm"
+  location                   = azurerm_resource_group.cc_rg.location
+  resource_group_name        = azurerm_resource_group.cc_rg.name
+  network_interface_ids      = [azurerm_network_interface.cces_nic[each.value].id]
+  size                       = var.azure_cces_vm_size
+  admin_username             = "azureuser"
+  allow_extension_operations = var.azure_allow_extension_operations
+  encryption_at_host_enabled = var.azure_enable_encryption_at_host
 
   admin_ssh_key {
     username   = "azureuser"
@@ -200,14 +343,20 @@ resource "azurerm_linux_virtual_machine" "cces_node" {
   }
 
   os_disk {
-    caching              = local.os_disk_caching
-    storage_account_type = "Premium_LRS"
+    caching                = local.os_disk_caching
+    storage_account_type   = "Premium_LRS"
+    disk_encryption_set_id = one(azurerm_disk_encryption_set.cces[*].id)
   }
 
   plan {
     name      = var.azure_cces_plan_name
     publisher = "rubrik-inc"
     product   = "rubrik-data-protection"
+  }
+
+  dynamic "boot_diagnostics" {
+    for_each = var.azure_enable_boot_diagnostics ? [1] : []
+    content {}
   }
 
   tags = var.azure_tags
@@ -234,14 +383,17 @@ resource "time_sleep" "wait_for_nodes_to_provision" {
 }
 
 resource "azurerm_managed_disk" "cces_data_disk" {
-  for_each             = toset(local.cluster_node_names)
-  name                 = "${each.value}-disk"
-  location             = azurerm_resource_group.cc_rg.location
-  resource_group_name  = azurerm_resource_group.cc_rg.name
-  storage_account_type = "Premium_LRS"
-  create_option        = "Empty"
-  disk_size_gb         = "512"
-  tags                 = var.azure_tags
+  for_each                      = toset(local.cluster_node_names)
+  name                          = "${each.value}-disk"
+  location                      = azurerm_resource_group.cc_rg.location
+  resource_group_name           = azurerm_resource_group.cc_rg.name
+  storage_account_type          = "Premium_LRS"
+  create_option                 = "Empty"
+  disk_size_gb                  = "512"
+  disk_encryption_set_id        = one(azurerm_disk_encryption_set.cces[*].id)
+  network_access_policy         = var.azure_disk_restrict_network_access ? "DenyAll" : "AllowAll"
+  public_network_access_enabled = !var.azure_disk_restrict_network_access
+  tags                          = var.azure_tags
 }
 
 resource "azurerm_management_lock" "cces_data_disk" {
@@ -268,14 +420,17 @@ resource "azurerm_virtual_machine_data_disk_attachment" "cces_data_disk" {
 # for CDM version 9.2.2 and later.
 
 resource "azurerm_managed_disk" "cces_metadata_disk" {
-  for_each             = local.split_disk ? toset(local.cluster_node_names) : []
-  name                 = "${each.value}-metadata-disk"
-  location             = azurerm_resource_group.cc_rg.location
-  resource_group_name  = azurerm_resource_group.cc_rg.name
-  storage_account_type = "Premium_LRS"
-  create_option        = "Empty"
-  disk_size_gb         = "132"
-  tags                 = var.azure_tags
+  for_each                      = local.split_disk ? toset(local.cluster_node_names) : []
+  name                          = "${each.value}-metadata-disk"
+  location                      = azurerm_resource_group.cc_rg.location
+  resource_group_name           = azurerm_resource_group.cc_rg.name
+  storage_account_type          = "Premium_LRS"
+  create_option                 = "Empty"
+  disk_size_gb                  = "132"
+  disk_encryption_set_id        = one(azurerm_disk_encryption_set.cces[*].id)
+  network_access_policy         = var.azure_disk_restrict_network_access ? "DenyAll" : "AllowAll"
+  public_network_access_enabled = !var.azure_disk_restrict_network_access
+  tags                          = var.azure_tags
 }
 
 resource "azurerm_management_lock" "cces_metadata_disk" {
@@ -299,14 +454,17 @@ resource "azurerm_virtual_machine_data_disk_attachment" "cces_metadata_disk" {
 }
 
 resource "azurerm_managed_disk" "cces_cache_disk" {
-  for_each             = local.split_disk ? toset(local.cluster_node_names) : []
-  name                 = "${each.value}-cache-disk"
-  location             = azurerm_resource_group.cc_rg.location
-  resource_group_name  = azurerm_resource_group.cc_rg.name
-  storage_account_type = "Premium_LRS"
-  create_option        = "Empty"
-  disk_size_gb         = "206"
-  tags                 = var.azure_tags
+  for_each                      = local.split_disk ? toset(local.cluster_node_names) : []
+  name                          = "${each.value}-cache-disk"
+  location                      = azurerm_resource_group.cc_rg.location
+  resource_group_name           = azurerm_resource_group.cc_rg.name
+  storage_account_type          = "Premium_LRS"
+  create_option                 = "Empty"
+  disk_size_gb                  = "206"
+  disk_encryption_set_id        = one(azurerm_disk_encryption_set.cces[*].id)
+  network_access_policy         = var.azure_disk_restrict_network_access ? "DenyAll" : "AllowAll"
+  public_network_access_enabled = !var.azure_disk_restrict_network_access
+  tags                          = var.azure_tags
 }
 
 resource "azurerm_management_lock" "cces_cache_disk" {
@@ -358,7 +516,11 @@ resource "polaris_cdm_bootstrap_cces_azure" "bootstrap_cces_azure" {
   container_name         = var.cluster_name
   enable_immutability    = var.enableImmutability
   timeout                = var.timeout
-  depends_on             = [time_sleep.wait_for_nodes_to_boot]
+
+  depends_on = [
+    time_sleep.wait_for_nodes_to_boot,
+    azurerm_storage_account_network_rules.cc_storage_account,
+  ]
 }
 
 ##############################################
