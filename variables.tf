@@ -205,6 +205,24 @@ variable "azure_sa_container_soft_delete_days" {
   }
 }
 
+variable "azure_sa_default_to_entra_id_authentication" {
+  description = "Make Microsoft Entra ID the default authentication method for the Azure Storage Account in the Azure portal, instead of the account access key. This only changes the default in the Azure portal, it doesn't affect CCES which authenticates with the connection string. Defaults to `false` to not change the behavior of existing deployments."
+  type        = bool
+  default     = false
+}
+
+variable "azure_sa_disable_local_users" {
+  description = "Disable local users on the Azure Storage Account. CCES doesn't use local users. Defaults to `false` to not change the behavior of existing deployments."
+  type        = bool
+  default     = false
+}
+
+variable "azure_sa_disable_public_container_access" {
+  description = "Disallow public access to the containers and blobs of the Azure Storage Account. CCES doesn't use anonymous access. Defaults to `false` to not change the behavior of existing deployments."
+  type        = bool
+  default     = false
+}
+
 variable "azure_sa_logs_eventhub_authorization_rule_id" {
   description = "The ID of an Event Hub authorization rule to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to."
   type        = string
@@ -240,6 +258,12 @@ variable "azure_sa_replication_type" {
   default     = "LRS"
 }
 
+variable "azure_sa_restrict_file_shares" {
+  description = "Require SMB 3.1.1 for the file shares of the Azure Storage Account, and disable soft delete for file shares, which is enabled by default for new Storage Accounts and which Rubrik requires to be disabled. CCES doesn't use file shares. Defaults to `false` to not change the behavior of existing deployments."
+  type        = bool
+  default     = false
+}
+
 variable "azure_sa_restrict_network_access" {
   description = "Restrict network access to the Azure Storage Account. When `true`, the default action of the network rules is `Deny` and only the CCES subnet, the IP ranges in `azure_sa_allowed_ip_ranges` and trusted Azure services are allowed access. Clients outside of the CCES subnet are denied access unless their IP address is allowed. The CCES subnet must have the `Microsoft.Storage` service endpoint, see `azure_enable_subnet_storage_endpoint`. Defaults to `false` to not change the behavior of existing deployments."
   type        = bool
@@ -247,12 +271,12 @@ variable "azure_sa_restrict_network_access" {
 }
 
 variable "azure_sa_sas_expiration_period" {
-  description = "The maximum validity of a shared access signature (SAS) for the Azure Storage Account, in the format `DD.HH:MM:SS`. The module doesn't create any SAS tokens, and the policy only logs SAS tokens that are valid for longer than this."
+  description = "The maximum validity of a shared access signature (SAS) for the Azure Storage Account, in the format `DD.HH:MM:SS`. The module doesn't create any SAS tokens, and the policy only logs SAS tokens that are valid for longer than this. When not set, no SAS expiration policy is configured. Defaults to `null` to not change the behavior of existing deployments."
   type        = string
-  default     = "7.00:00:00"
+  default     = null
 
   validation {
-    condition     = can(regex("^\\d+\\.([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$", var.azure_sa_sas_expiration_period))
+    condition     = var.azure_sa_sas_expiration_period == null ? true : can(regex("^\\d+\\.([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$", var.azure_sa_sas_expiration_period))
     error_message = "The SAS expiration period must be in the format 'DD.HH:MM:SS'. For example, '7.00:00:00'."
   }
 }

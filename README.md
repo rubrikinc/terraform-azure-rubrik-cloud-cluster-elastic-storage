@@ -29,13 +29,21 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 ## Changelog
 
 ### v1.2.0
-* Address the findings that Azure security scanners raise against the module. Settings that can disrupt a running
-  cluster, or that Rubrik doesn't document for CCES, are opt-in input variables that default to the current behavior, so
-  upgrading the module doesn't change how an existing cluster runs unless the variables are set. See the upgrade
-  instructions in the README before upgrading.
+* Address the findings that Azure security scanners raise against the module. All the new settings are opt-in input
+  variables that default to the current behavior, so upgrading the module doesn't change an existing deployment unless
+  the variables are set. See the upgrade instructions in the README before upgrading.
+* Add the `azure_sa_disable_public_container_access`, `azure_sa_default_to_entra_id_authentication`,
+  `azure_sa_disable_local_users` and `azure_sa_restrict_file_shares` input variables, which harden the Storage Account.
+  They disallow public access to containers, make Entra ID the default authentication in the Azure portal, disable
+  local users, and require SMB 3.1.1 and disable soft delete for file shares, which Rubrik requires to be disabled.
+  CCES doesn't use any of these settings.
+* Add the `azure_sa_sas_expiration_period` input variable, which sets a SAS expiration policy that only logs SAS tokens
+  that are valid for longer than the period. No policy is set by default.
 * Add the `azure_sa_restrict_network_access` input variable, which sets the default action of the Storage Account
   network rules to `Deny` and only allows the CCES subnet and trusted Azure services. Hosts outside the CCES subnet
-  can be allowed with the new `azure_sa_allowed_ip_ranges` input variable.
+  can be allowed with the new `azure_sa_allowed_ip_ranges` input variable. The network rules are managed by the new
+  `azurerm_storage_account_network_rules` resource, which is only created when `azure_sa_restrict_network_access` is
+  set.
 * Add the `azure_disk_restrict_network_access` input variable, which sets the network access policy of the managed
   disks to `DenyAll` and disables public network access.
 * Add support for encrypting the Storage Account and the disks, including the OS disks, with customer-managed keys.
@@ -52,16 +60,7 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
   read, write and delete logs of the Storage Account to a destination provided by the user. Do not send the logs to
   the CCES Storage Account.
 * Add the `azure_sa_container_soft_delete_days` input variable, which enables container soft delete. It is disabled by
-  default, since Rubrik doesn't document container soft delete for CCES. Add the `azure_sa_sas_expiration_period` input
-  variable.
-* Apply these settings to all deployments. They are updated in place and don't affect CCES:
-  * Storage Account: disallow public access to containers, make Entra ID the default authentication in the Azure
-    portal, disable local users, set a SAS expiration policy that only logs, require SMB 3.1.1 and explicitly allow
-    trusted Azure services. This disables soft delete for file shares, which is enabled by default for new Storage
-    Accounts, and which Rubrik requires to be disabled.
-* The network rules of the Storage Account are now managed by the new `azurerm_storage_account_network_rules`
-  resource. It is added to the plan of an existing deployment, and changes nothing unless
-  `azure_sa_restrict_network_access` is set.
+  default, since Rubrik doesn't document container soft delete for CCES.
 * The following findings are not addressed, since CCES doesn't support the setting:
   * Blob soft delete, infrastructure encryption and disabling Storage Account shared key access. Rubrik requires blob
     soft delete and infrastructure encryption to be disabled and the shared key access to be enabled, since the
@@ -75,10 +74,9 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
   * Azure Disk Encryption. Rubrik doesn't document it as supported on CCES nodes. Use the customer-managed keys and
     encryption at host instead.
 
-This is released as a minor version, and not as a patch version, so that existing deployments using a `~> 1.1.0` version
-constraint are not upgraded automatically. The upgrade updates the Storage Account of an existing deployment in place.
-The optional settings don't change anything until their input variables are set, but enabling some of them on a running
-cluster is disruptive. See the upgrade instructions in the README before upgrading.
+This is released as a minor version since it adds input variables. Upgrading doesn't change an existing deployment
+unless the optional settings are set, but enabling some of them on a running cluster is disruptive. See the upgrade
+instructions in the README before upgrading.
 
 ### v1.1.0
 * Change the host caching mode of the Rubrik Cloud Cluster metadata disk from `ReadWrite` to `None`. CDM 9.3.3 and later
@@ -154,40 +152,24 @@ can be ignored, but it's recommended that you follow the instructions in the dep
 variables will be removed.
 
 ### v1.1.0 to v1.2.0
-Version `v1.2.0` hardens the Storage Account of every deployment, and adds optional settings that are disabled by
-default. Upgrading doesn't restart the cluster nodes and doesn't change how CCES reaches its storage.
+Version `v1.2.0` adds optional security settings that are all disabled by default. Upgrading doesn't change an existing
+deployment, `terraform plan` shows no changes until the input variables of the settings are set. The settings have this
+impact when enabled on a running cluster:
 
-The plan of an existing deployment contains these changes, and no resources are destroyed or recreated:
-```text
-# module.<module-name>.azurerm_storage_account.cc_storage_account will be updated in-place
-# module.<module-name>.azurerm_storage_account_network_rules.cc_storage_account will be created
-```
-The Storage Account is updated to disallow public access to containers, make Entra ID the default authentication in the
-Azure portal, disable local users, add a SAS expiration policy that only logs, require SMB 3.1.1 and disable soft delete
-for file shares. The new network rules resource keeps the default action of the Storage Account at `Allow`, until
-`azure_sa_restrict_network_access` is set. None of these changes affect the CCES data path, and no
-`azurerm_managed_disk` or `azurerm_linux_virtual_machine` is changed.
-
-The optional settings are not applied until their input variables are set. Enabling them on a running cluster has this
-impact:
-
-| Input variable                                                      | Impact when enabled on a running cluster                                                       |
-|---------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
-| `azure_sa_restrict_network_access`                                  | In-place. Hosts outside the CCES subnet are denied access to the data.                         |
-| `azure_sa_cmk_key_vault_key_id`                                     | In-place. The Storage Account gets the identity and depends on the Key Vault key.              |
-| `azure_disk_cmk_key_vault_key_id`                                   | **Deallocates and restarts the nodes.** Azure doesn't allow it to be reverted.                 |
-| `azure_enable_encryption_at_host`                                   | **Deallocates and restarts the nodes.**                                                        |
-| `azure_disk_restrict_network_access`                                | In-place. Blocks access to the disks through SAS URLs, which some backup and scanning tools use. |
-| `azure_sa_container_soft_delete_days`                               | In-place.                                                                                      |
-| `azure_enable_boot_diagnostics`, `azure_allow_extension_operations` | In-place.                                                                                      |
-| `azure_sa_logs_*`                                                   | Adds diagnostic settings to the Storage Account.                                               |
+| Input variable                                                                                                                                                                      | Impact when enabled on a running cluster                                                         |
+|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| `azure_sa_disable_public_container_access`, `azure_sa_default_to_entra_id_authentication`, `azure_sa_disable_local_users`, `azure_sa_restrict_file_shares`, `azure_sa_sas_expiration_period` | In-place. CCES doesn't use these settings.                                                       |
+| `azure_sa_restrict_network_access`                                                                                                                                                  | Creates the network rules. Hosts outside the CCES subnet are denied access to the data.          |
+| `azure_sa_cmk_key_vault_key_id`                                                                                                                                                     | In-place. The Storage Account gets the identity and depends on the Key Vault key.                |
+| `azure_disk_cmk_key_vault_key_id`                                                                                                                                                   | **Deallocates and restarts the nodes.** Azure doesn't allow it to be reverted.                   |
+| `azure_enable_encryption_at_host`                                                                                                                                                   | **Deallocates and restarts the nodes.**                                                          |
+| `azure_disk_restrict_network_access`                                                                                                                                                | In-place. Blocks access to the disks through SAS URLs, which some backup and scanning tools use. |
+| `azure_sa_container_soft_delete_days`                                                                                                                                               | In-place.                                                                                        |
+| `azure_enable_boot_diagnostics`, `azure_allow_extension_operations`                                                                                                                 | In-place.                                                                                        |
+| `azure_sa_logs_*`                                                                                                                                                                   | Adds diagnostic settings to the Storage Account.                                                 |
 
 See [Security Settings](#security-settings) for how to use them. Apply the settings that restart the nodes during a
 maintenance window.
-
-This change is released as a minor version, and not as a patch version, so that existing deployments using a
-`version = "~> 1.1.0"` constraint are not upgraded automatically. A constraint such as `version = "~> 1.1"` does pick up
-`v1.2.0`, so check the plan before applying.
 
 ### v1.0.2 to v1.1.0
 In version `v1.1.0` the host caching mode of the Rubrik Cloud Cluster metadata disk changed from `ReadWrite` to
@@ -438,9 +420,22 @@ the `azure_tags` input variable to all the resources it creates, not only to the
 for details.
 
 ## Security Settings
-The module applies a set of security settings to the Storage Account of every deployment. They are updated in place and
-don't affect CCES. The settings in this section are optional, since enabling them can disrupt a running cluster, or
-Rubrik doesn't document them for CCES. They are all disabled by default.
+The settings in this section are optional and all disabled by default, so upgrading the module doesn't change an
+existing deployment. Some of them can disrupt a running cluster, and Rubrik doesn't document some of them for CCES.
+
+### Hardening the Storage Account
+Set these input variables to `true` to harden the Storage Account. CCES doesn't use any of the settings they change:
+
+| Input variable                                 | Setting                                                                                                                                                                                                                  |
+|------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `azure_sa_disable_public_container_access`     | Disallows public access to the containers and blobs.                                                                                                                                                                     |
+| `azure_sa_default_to_entra_id_authentication`  | Makes Microsoft Entra ID the default authentication method in the Azure portal. CCES authenticates with the connection string, which isn't affected.                                                                      |
+| `azure_sa_disable_local_users`                 | Disables local users.                                                                                                                                                                                                    |
+| `azure_sa_restrict_file_shares`                | Requires SMB 3.1.1 for the file shares and disables soft delete for file shares, which Azure enables by default for new Storage Accounts and which Rubrik requires to be disabled.                                      |
+
+Set `azure_sa_sas_expiration_period`, for example to `"7.00:00:00"`, to add a SAS expiration policy to the Storage
+Account. The policy only logs SAS tokens that are valid for longer than the period, and the module doesn't create any
+SAS tokens. No policy is set by default.
 
 ### Restricting Network Access to the Storage Account
 Set the `azure_sa_restrict_network_access` input variable to `true` to set the default action of the Storage Account
@@ -644,14 +639,18 @@ and [Prerequisites for Rubrik Cloud Cluster ES on Azure](https://docs.rubrik.com
 | <a name="input_azure_sa_allowed_ip_ranges"></a> [azure\_sa\_allowed\_ip\_ranges](#input\_azure\_sa\_allowed\_ip\_ranges) | Public IPv4 addresses or CIDR ranges that are allowed to access the Azure Storage Account when `azure_sa_restrict_network_access` is `true`. Use it to allow the hosts that manage the Storage Account, for example the Terraform runner, when they are outside of the CCES subnet. Azure doesn't support private IP ranges, or `/31` and `/32` ranges, use single IP addresses instead of `/31` and `/32` ranges. | `list(string)` | `[]` | no |
 | <a name="input_azure_sa_cmk_key_vault_key_id"></a> [azure\_sa\_cmk\_key\_vault\_key\_id](#input\_azure\_sa\_cmk\_key\_vault\_key\_id) | The ID of the Azure Key Vault key used to encrypt the Azure Storage Account with a customer-managed key. Use a key ID without a version to have Azure automatically use the latest key version. Requires `azure_cmk_user_assigned_identity_id`. The key vault must have soft delete and purge protection enabled. Azure Key Vault becomes a hard dependency of the Storage Account, if the key is deleted or disabled, or if the identity loses access to the key, the cluster data becomes inaccessible. When not set, the Storage Account is encrypted with a Microsoft-managed key. | `string` | `null` | no |
 | <a name="input_azure_sa_container_soft_delete_days"></a> [azure\_sa\_container\_soft\_delete\_days](#input\_azure\_sa\_container\_soft\_delete\_days) | The number of days a deleted container is retained in the Azure Storage Account, 1 to 365. Set to `0` to disable container soft delete. Rubrik requires blob soft delete to be disabled, which is not changed by this setting. Rubrik doesn't document container soft delete for CCES, so it is disabled by default. | `number` | `0` | no |
+| <a name="input_azure_sa_default_to_entra_id_authentication"></a> [azure\_sa\_default\_to\_entra\_id\_authentication](#input\_azure\_sa\_default\_to\_entra\_id\_authentication) | Make Microsoft Entra ID the default authentication method for the Azure Storage Account in the Azure portal, instead of the account access key. This only changes the default in the Azure portal, it doesn't affect CCES which authenticates with the connection string. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
+| <a name="input_azure_sa_disable_local_users"></a> [azure\_sa\_disable\_local\_users](#input\_azure\_sa\_disable\_local\_users) | Disable local users on the Azure Storage Account. CCES doesn't use local users. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
+| <a name="input_azure_sa_disable_public_container_access"></a> [azure\_sa\_disable\_public\_container\_access](#input\_azure\_sa\_disable\_public\_container\_access) | Disallow public access to the containers and blobs of the Azure Storage Account. CCES doesn't use anonymous access. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
 | <a name="input_azure_sa_logs_eventhub_authorization_rule_id"></a> [azure\_sa\_logs\_eventhub\_authorization\_rule\_id](#input\_azure\_sa\_logs\_eventhub\_authorization\_rule\_id) | The ID of an Event Hub authorization rule to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to. | `string` | `null` | no |
 | <a name="input_azure_sa_logs_eventhub_name"></a> [azure\_sa\_logs\_eventhub\_name](#input\_azure\_sa\_logs\_eventhub\_name) | The name of the Event Hub to send the logs to, requires `azure_sa_logs_eventhub_authorization_rule_id`. When not set, the default Event Hub of the namespace is used. | `string` | `null` | no |
 | <a name="input_azure_sa_logs_log_analytics_workspace_id"></a> [azure\_sa\_logs\_log\_analytics\_workspace\_id](#input\_azure\_sa\_logs\_log\_analytics\_workspace\_id) | The ID of a Log Analytics workspace to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to. Do not send the logs to the CCES Storage Account itself, the log volume of a backup workload is high. | `string` | `null` | no |
 | <a name="input_azure_sa_logs_storage_account_id"></a> [azure\_sa\_logs\_storage\_account\_id](#input\_azure\_sa\_logs\_storage\_account\_id) | The ID of a Storage Account to send the read, write and delete logs of the Azure Storage Account blob, queue, table and file services to. Do not use the CCES Storage Account, the log volume of a backup workload is high. | `string` | `null` | no |
 | <a name="input_azure_sa_name"></a> [azure\_sa\_name](#input\_azure\_sa\_name) | The name of the Azure Storage Account to create for Rubrik Cloud Cluster resources. | `string` | n/a | yes |
 | <a name="input_azure_sa_replication_type"></a> [azure\_sa\_replication\_type](#input\_azure\_sa\_replication\_type) | The type of replication to use with the the Azure Storage Account for Rubrik Cloud Cluster. Defaults to `LRS` to avoid doubling the storage cost. Use `GRS` or `GZRS` to enable geo-redundant storage. | `string` | `"LRS"` | no |
+| <a name="input_azure_sa_restrict_file_shares"></a> [azure\_sa\_restrict\_file\_shares](#input\_azure\_sa\_restrict\_file\_shares) | Require SMB 3.1.1 for the file shares of the Azure Storage Account, and disable soft delete for file shares, which is enabled by default for new Storage Accounts and which Rubrik requires to be disabled. CCES doesn't use file shares. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
 | <a name="input_azure_sa_restrict_network_access"></a> [azure\_sa\_restrict\_network\_access](#input\_azure\_sa\_restrict\_network\_access) | Restrict network access to the Azure Storage Account. When `true`, the default action of the network rules is `Deny` and only the CCES subnet, the IP ranges in `azure_sa_allowed_ip_ranges` and trusted Azure services are allowed access. Clients outside of the CCES subnet are denied access unless their IP address is allowed. The CCES subnet must have the `Microsoft.Storage` service endpoint, see `azure_enable_subnet_storage_endpoint`. Defaults to `false` to not change the behavior of existing deployments. | `bool` | `false` | no |
-| <a name="input_azure_sa_sas_expiration_period"></a> [azure\_sa\_sas\_expiration\_period](#input\_azure\_sa\_sas\_expiration\_period) | The maximum validity of a shared access signature (SAS) for the Azure Storage Account, in the format `DD.HH:MM:SS`. The module doesn't create any SAS tokens, and the policy only logs SAS tokens that are valid for longer than this. | `string` | `"7.00:00:00"` | no |
+| <a name="input_azure_sa_sas_expiration_period"></a> [azure\_sa\_sas\_expiration\_period](#input\_azure\_sa\_sas\_expiration\_period) | The maximum validity of a shared access signature (SAS) for the Azure Storage Account, in the format `DD.HH:MM:SS`. The module doesn't create any SAS tokens, and the policy only logs SAS tokens that are valid for longer than this. When not set, no SAS expiration policy is configured. Defaults to `null` to not change the behavior of existing deployments. | `string` | `null` | no |
 | <a name="input_azure_subnet_name"></a> [azure\_subnet\_name](#input\_azure\_subnet\_name) | Name of the Azure subnet to deploy Rubrik Cloud Cluster into. This subnet must be in the VNet that is defined in the 'azure\_vnet\_name' variable. | `string` | n/a | yes |
 | <a name="input_azure_subscription_id"></a> [azure\_subscription\_id](#input\_azure\_subscription\_id) | Subscription ID of the Azure account to deploy Rubrik Cloud Cluster resources. Deprecated: This variable is no longer required as the subscription ID is now determined by the provider configuration. | `string` | `null` | no |
 | <a name="input_azure_tags"></a> [azure\_tags](#input\_azure\_tags) | Tags to add to the Azure resources that this Terraform script creates, including the Rubrik cluster nodes. | `map(string)` | `{}` | no |

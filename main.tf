@@ -52,9 +52,9 @@ resource "azurerm_storage_account" "cc_storage_account" {
   account_tier                    = "Standard"
   account_replication_type        = var.azure_sa_replication_type
   public_network_access_enabled   = true
-  allow_nested_items_to_be_public = false
-  default_to_oauth_authentication = true
-  local_user_enabled              = false
+  allow_nested_items_to_be_public = !var.azure_sa_disable_public_container_access
+  default_to_oauth_authentication = var.azure_sa_default_to_entra_id_authentication
+  local_user_enabled              = !var.azure_sa_disable_local_users
 
   # CCES authenticates to the storage account using the connection string, so
   # shared key access must stay enabled and blob soft delete must stay disabled.
@@ -71,15 +71,24 @@ resource "azurerm_storage_account" "cc_storage_account" {
     }
   }
 
-  share_properties {
-    smb {
-      versions = ["SMB3.1.1"]
+  # Declaring the share properties block, even without a retention policy,
+  # disables the soft delete for file shares which Azure enables by default.
+
+  dynamic "share_properties" {
+    for_each = var.azure_sa_restrict_file_shares ? [1] : []
+    content {
+      smb {
+        versions = ["SMB3.1.1"]
+      }
     }
   }
 
-  sas_policy {
-    expiration_period = var.azure_sa_sas_expiration_period
-    expiration_action = "Log"
+  dynamic "sas_policy" {
+    for_each = var.azure_sa_sas_expiration_period == null ? [] : [1]
+    content {
+      expiration_period = var.azure_sa_sas_expiration_period
+      expiration_action = "Log"
+    }
   }
 
   # The identity is attached whenever it is set, and not only when the storage
@@ -120,16 +129,18 @@ resource "azurerm_storage_account" "cc_storage_account" {
 
 # The network rules are managed by a separate resource, since the Storage Account
 # resource doesn't report unrestricted network rules back, which would cause a
-# perpetual diff. The CCES subnet is only added to the rules when the network
-# access is restricted, which requires the subnet to have the Storage service
+# perpetual diff. The resource is only created when the network access is
+# restricted, which requires the CCES subnet to have the Storage service
 # endpoint.
 
 resource "azurerm_storage_account_network_rules" "cc_storage_account" {
+  count = var.azure_sa_restrict_network_access ? 1 : 0
+
   storage_account_id         = azurerm_storage_account.cc_storage_account.id
-  default_action             = var.azure_sa_restrict_network_access ? "Deny" : "Allow"
+  default_action             = "Deny"
   bypass                     = ["AzureServices"]
   ip_rules                   = var.azure_sa_allowed_ip_ranges
-  virtual_network_subnet_ids = var.azure_sa_restrict_network_access ? [data.azurerm_subnet.cces_subnet.id] : []
+  virtual_network_subnet_ids = [data.azurerm_subnet.cces_subnet.id]
 
   depends_on = [azapi_update_resource.cces_subnet_storage_endpoint]
 }

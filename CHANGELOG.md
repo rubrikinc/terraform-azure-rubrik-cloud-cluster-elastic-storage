@@ -1,13 +1,21 @@
 ## Changelog
 
 ### v1.2.0
-* Address the findings that Azure security scanners raise against the module. Settings that can disrupt a running
-  cluster, or that Rubrik doesn't document for CCES, are opt-in input variables that default to the current behavior, so
-  upgrading the module doesn't change how an existing cluster runs unless the variables are set. See the upgrade
-  instructions in the README before upgrading.
+* Address the findings that Azure security scanners raise against the module. All the new settings are opt-in input
+  variables that default to the current behavior, so upgrading the module doesn't change an existing deployment unless
+  the variables are set. See the upgrade instructions in the README before upgrading.
+* Add the `azure_sa_disable_public_container_access`, `azure_sa_default_to_entra_id_authentication`,
+  `azure_sa_disable_local_users` and `azure_sa_restrict_file_shares` input variables, which harden the Storage Account.
+  They disallow public access to containers, make Entra ID the default authentication in the Azure portal, disable
+  local users, and require SMB 3.1.1 and disable soft delete for file shares, which Rubrik requires to be disabled.
+  CCES doesn't use any of these settings.
+* Add the `azure_sa_sas_expiration_period` input variable, which sets a SAS expiration policy that only logs SAS tokens
+  that are valid for longer than the period. No policy is set by default.
 * Add the `azure_sa_restrict_network_access` input variable, which sets the default action of the Storage Account
   network rules to `Deny` and only allows the CCES subnet and trusted Azure services. Hosts outside the CCES subnet
-  can be allowed with the new `azure_sa_allowed_ip_ranges` input variable.
+  can be allowed with the new `azure_sa_allowed_ip_ranges` input variable. The network rules are managed by the new
+  `azurerm_storage_account_network_rules` resource, which is only created when `azure_sa_restrict_network_access` is
+  set.
 * Add the `azure_disk_restrict_network_access` input variable, which sets the network access policy of the managed
   disks to `DenyAll` and disables public network access.
 * Add support for encrypting the Storage Account and the disks, including the OS disks, with customer-managed keys.
@@ -24,16 +32,7 @@
   read, write and delete logs of the Storage Account to a destination provided by the user. Do not send the logs to
   the CCES Storage Account.
 * Add the `azure_sa_container_soft_delete_days` input variable, which enables container soft delete. It is disabled by
-  default, since Rubrik doesn't document container soft delete for CCES. Add the `azure_sa_sas_expiration_period` input
-  variable.
-* Apply these settings to all deployments. They are updated in place and don't affect CCES:
-  * Storage Account: disallow public access to containers, make Entra ID the default authentication in the Azure
-    portal, disable local users, set a SAS expiration policy that only logs, require SMB 3.1.1 and explicitly allow
-    trusted Azure services. This disables soft delete for file shares, which is enabled by default for new Storage
-    Accounts, and which Rubrik requires to be disabled.
-* The network rules of the Storage Account are now managed by the new `azurerm_storage_account_network_rules`
-  resource. It is added to the plan of an existing deployment, and changes nothing unless
-  `azure_sa_restrict_network_access` is set.
+  default, since Rubrik doesn't document container soft delete for CCES.
 * The following findings are not addressed, since CCES doesn't support the setting:
   * Blob soft delete, infrastructure encryption and disabling Storage Account shared key access. Rubrik requires blob
     soft delete and infrastructure encryption to be disabled and the shared key access to be enabled, since the
@@ -47,10 +46,9 @@
   * Azure Disk Encryption. Rubrik doesn't document it as supported on CCES nodes. Use the customer-managed keys and
     encryption at host instead.
 
-This is released as a minor version, and not as a patch version, so that existing deployments using a `~> 1.1.0` version
-constraint are not upgraded automatically. The upgrade updates the Storage Account of an existing deployment in place.
-The optional settings don't change anything until their input variables are set, but enabling some of them on a running
-cluster is disruptive. See the upgrade instructions in the README before upgrading.
+This is released as a minor version since it adds input variables. Upgrading doesn't change an existing deployment
+unless the optional settings are set, but enabling some of them on a running cluster is disruptive. See the upgrade
+instructions in the README before upgrading.
 
 ### v1.1.0
 * Change the host caching mode of the Rubrik Cloud Cluster metadata disk from `ReadWrite` to `None`. CDM 9.3.3 and later
