@@ -5,7 +5,7 @@ This module deploys a new Rubrik Cloud Cluster Elastic Storage (CCES) in Azure.
 ```hcl
 module "rubrik_azure_cloud_cluster_elastic_storage" {
   source  = "rubrikinc/rubrik-cloud-cluster-elastic-storage/azure"
-  version = "2.0.0"
+  version = "1.2.0"
 
   admin_email           = "build@rubrik.com"
   admin_password        = "RubrikGoForward"
@@ -28,7 +28,7 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
 
 ## Changelog
 
-### v2.0.0
+### v1.2.0
 * Address the findings that Azure security scanners raise against the module. Settings that can disrupt a running
   cluster, or that Rubrik doesn't document for CCES, are opt-in input variables that default to the current behavior, so
   upgrading the module doesn't change how an existing cluster runs unless the variables are set. See the upgrade
@@ -75,8 +75,10 @@ module "rubrik_azure_cloud_cluster_elastic_storage" {
   * Azure Disk Encryption. Rubrik doesn't document it as supported on CCES nodes. Use the customer-managed keys and
     encryption at host instead.
 
-This is released as a major version since the upgrade changes the Storage Account of an existing deployment, and since
-the optional settings are disruptive when they are enabled on a running cluster.
+This is released as a minor version, and not as a patch version, so that existing deployments using a `~> 1.1.0` version
+constraint are not upgraded automatically. The upgrade updates the Storage Account of an existing deployment in place.
+The optional settings don't change anything until their input variables are set, but enabling some of them on a running
+cluster is disruptive. See the upgrade instructions in the README before upgrading.
 
 ### v1.1.0
 * Change the host caching mode of the Rubrik Cloud Cluster metadata disk from `ReadWrite` to `None`. CDM 9.3.3 and later
@@ -141,7 +143,7 @@ Before upgrading the module, be sure to read through the changelog to understand
 upgrade instruction for the version you are upgrading to. 
 
 To upgrade the module to a new version, use the following steps:
-1. Update the `version` field in the `module` block to the version you want to upgrade to, e.g. `version = "2.0.0"`.
+1. Update the `version` field in the `module` block to the version you want to upgrade to, e.g. `version = "1.2.0"`.
 2. Run `terraform init --upgrade` to update the modules in your configuration.
 3. Run `terraform plan` and check the output carefully to ensure that there are no unexpected changes caused by the
    upgrade.
@@ -151,8 +153,8 @@ Note, as variables in the module are deprecated, you may see warnings in the out
 can be ignored, but it's recommended that you follow the instructions in the deprecation message. Eventually deprecated
 variables will be removed.
 
-### v1.1.0 to v2.0.0
-Version `v2.0.0` hardens the Storage Account of every deployment, and adds optional settings that are disabled by
+### v1.1.0 to v1.2.0
+Version `v1.2.0` hardens the Storage Account of every deployment, and adds optional settings that are disabled by
 default. Upgrading doesn't restart the cluster nodes and doesn't change how CCES reaches its storage.
 
 The plan of an existing deployment contains these changes, and no resources are destroyed or recreated:
@@ -183,8 +185,9 @@ impact:
 See [Security Settings](#security-settings) for how to use them. Apply the settings that restart the nodes during a
 maintenance window.
 
-This change is released as a major version so that existing deployments are not upgraded automatically. Deployments
-using a version constraint such as `version = "~> 1.1"` will not pick up `v2.0.0`.
+This change is released as a minor version, and not as a patch version, so that existing deployments using a
+`version = "~> 1.1.0"` constraint are not upgraded automatically. A constraint such as `version = "~> 1.1"` does pick up
+`v1.2.0`, so check the plan before applying.
 
 ### v1.0.2 to v1.1.0
 In version `v1.1.0` the host caching mode of the Rubrik Cloud Cluster metadata disk changed from `ReadWrite` to

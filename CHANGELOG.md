@@ -1,6 +1,6 @@
 ## Changelog
 
-### v2.0.0
+### v1.2.0
 * Address the findings that Azure security scanners raise against the module. Settings that can disrupt a running
   cluster, or that Rubrik doesn't document for CCES, are opt-in input variables that default to the current behavior, so
   upgrading the module doesn't change how an existing cluster runs unless the variables are set. See the upgrade
@@ -47,8 +47,10 @@
   * Azure Disk Encryption. Rubrik doesn't document it as supported on CCES nodes. Use the customer-managed keys and
     encryption at host instead.
 
-This is released as a major version since the upgrade changes the Storage Account of an existing deployment, and since
-the optional settings are disruptive when they are enabled on a running cluster.
+This is released as a minor version, and not as a patch version, so that existing deployments using a `~> 1.1.0` version
+constraint are not upgraded automatically. The upgrade updates the Storage Account of an existing deployment in place.
+The optional settings don't change anything until their input variables are set, but enabling some of them on a running
+cluster is disruptive. See the upgrade instructions in the README before upgrading.
 
 ### v1.1.0
 * Change the host caching mode of the Rubrik Cloud Cluster metadata disk from `ReadWrite` to `None`. CDM 9.3.3 and later
